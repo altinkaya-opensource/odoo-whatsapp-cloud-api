@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8" ?>
 <odoo>
     <record id="view_whatsapp_backend_tree" model="ir.ui.view">
         <field name="name">whatsapp.backend.tree</field>
@@ -24,7 +24,10 @@
                         <group>
                             <field name="name" />
                             <field name="active" />
-                            <field name="company_id" options="{'no_create': True, 'no_open': True}" />
+                            <field
+                                name="company_id"
+                                options="{'no_create': True, 'no_open': True}"
+                            />
                             <field name="language" />
                         </group>
                         <group>
@@ -35,40 +38,79 @@
                     </group>
                     <notebook>
                         <page name="users" string="Users">
-                            <field name="user_ids" context="{'default_company_id': company_id}" options="{'no_create': True}">
-                                <kanban class="o_kanban_mobile o_m2m_kanban" quick_create="false">
-                                    <field name="id"/>
-                                    <field name="name"/>
-                                    <field name="login"/>
-                                    <field name="lang"/>
-                                    <field name="im_status"/>
-                                    <field name="active"/>
-                                    <field name="login_date"/>
+                            <field
+                                name="user_ids"
+                                context="{'default_company_id': company_id}"
+                                options="{'no_create': True}"
+                            >
+                                <kanban
+                                    class="o_kanban_mobile o_m2m_kanban"
+                                    quick_create="false"
+                                >
+                                    <field name="id" />
+                                    <field name="name" />
+                                    <field name="login" />
+                                    <field name="lang" />
+                                    <field name="im_status" />
+                                    <field name="active" />
+                                    <field name="login_date" />
                                     <templates>
                                         <t t-name="kanban-box">
                                             <div t-attf-class="oe_kanban_global_click">
                                                 <div class="o_kanban_image">
-                                                    <img alt="Avatar" t-att-src="kanban_image('res.users', 'avatar_128', record.id.raw_value)" />
+                                                    <img
+                                                        alt="Avatar"
+                                                        t-att-src="kanban_image('res.users', 'avatar_128', record.id.raw_value)"
+                                                    />
                                                 </div>
                                                 <div class="oe_kanban_details">
                                                     <ul>
-                                                        <li class="text-success float-end mb4" t-if="record.im_status.raw_value == 'online'" title="Online">
-                                                            <i class="fa fa-circle" role="img" aria-label="Active" title="Active"/>
+                                                        <li
+                                                            class="text-success float-end mb4"
+                                                            t-if="record.im_status.raw_value == 'online'"
+                                                            title="Online"
+                                                        >
+                                                            <i
+                                                                class="fa fa-circle"
+                                                                role="img"
+                                                                aria-label="Active"
+                                                                title="Active"
+                                                            />
                                                         </li>
-                                                        <li class="text-danger float-end mb4" t-if="record.im_status.raw_value != 'online'" title="Offline">
-                                                            <i class="fa fa-circle" role="img" aria-label="Inactive" title="Inactive"/>
+                                                        <li
+                                                            class="text-danger float-end mb4"
+                                                            t-if="record.im_status.raw_value != 'online'"
+                                                            title="Offline"
+                                                        >
+                                                            <i
+                                                                class="fa fa-circle"
+                                                                role="img"
+                                                                aria-label="Inactive"
+                                                                title="Inactive"
+                                                            />
                                                         </li>
                                                         <li class="mb4">
                                                             <strong>
-                                                                <field name="name"/>
+                                                                <field name="name" />
                                                             </strong>
                                                         </li>
-                                                        <li class="badge rounded-pill float-end mb4" t-if="record.lang.raw_value">
-                                                            <field name="lang"/>
+                                                        <li
+                                                            class="badge rounded-pill float-end mb4"
+                                                            t-if="record.lang.raw_value"
+                                                        >
+                                                            <field name="lang" />
                                                         </li>
-                                                        <li class="mb4" t-if="record.login.raw_value" title="Login">
-                                                            <i class="fa fa-envelope" role="img" aria-label="Login"/>
-                                                            <field name="login"/>
+                                                        <li
+                                                            class="mb4"
+                                                            t-if="record.login.raw_value"
+                                                            title="Login"
+                                                        >
+                                                            <i
+                                                                class="fa fa-envelope"
+                                                                role="img"
+                                                                aria-label="Login"
+                                                            />
+                                                            <field name="login" />
                                                         </li>
                                                     </ul>
                                                 </div>
@@ -88,11 +130,30 @@
         <field name="name">WhatsApp Backends</field>
         <field name="res_model">whatsapp.backend</field>
         <field name="view_mode">tree,form</field>
-        <field name="view_id" ref="whatsapp_cloud_api_backend.view_whatsapp_backend_tree" />
-        <field name="groups_id" eval="[(4, ref('whatsapp_cloud_api_backend.group_whatsapp_backend_user')), (4, ref('whatsapp_cloud_api_backend.group_whatsapp_backend_manager'))]" />
+        <field
+            name="view_id"
+            ref="whatsapp_cloud_api_backend.view_whatsapp_backend_tree"
+        />
+        <field
+            name="groups_id"
+            eval="[(4, ref('whatsapp_cloud_api_backend.group_whatsapp_backend_user')), (4, ref('whatsapp_cloud_api_backend.group_whatsapp_backend_manager'))]"
+        />
     </record>
 
-    <menuitem id="menu_whatsapp_backend_root" name="WhatsApp" sequence="15" groups="whatsapp_cloud_api_backend.group_whatsapp_backend_user,whatsapp_cloud_api_backend.group_whatsapp_backend_manager" web_icon="whatsapp_cloud_api_backend,static/description/icon.png" />
+    <menuitem
+        id="menu_whatsapp_backend_root"
+        name="WhatsApp"
+        sequence="15"
+        groups="whatsapp_cloud_api_backend.group_whatsapp_backend_user,whatsapp_cloud_api_backend.group_whatsapp_backend_manager"
+        web_icon="whatsapp_cloud_api_backend,static/description/icon.png"
+    />
 
-    <menuitem id="menu_whatsapp_backend" name="Backends" parent="menu_whatsapp_backend_root" action="action_whatsapp_backend" sequence="10" groups="whatsapp_cloud_api_backend.group_whatsapp_backend_user,whatsapp_cloud_api_backend.group_whatsapp_backend_manager" />
+    <menuitem
+        id="menu_whatsapp_backend"
+        name="Backends"
+        parent="menu_whatsapp_backend_root"
+        action="action_whatsapp_backend"
+        sequence="10"
+        groups="whatsapp_cloud_api_backend.group_whatsapp_backend_user,whatsapp_cloud_api_backend.group_whatsapp_backend_manager"
+    />
 </odoo>

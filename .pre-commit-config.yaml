@@ -45,8 +45,7 @@ repos:
       # update the NOT INSTALLABLE ADDONS section above
       - id: oca-update-pre-commit-excluded-addons
       - id: oca-fix-manifest-website
-        args:
-          ["https://github.com/altinkaya-opensource/odoo-whatsapp-cloud-api"]
+        args: ["https://github.com/altinkaya-opensource/odoo-whatsapp-cloud-api"]
 
   - repo: https://github.com/OCA/odoo-pre-commit-hooks
     rev: v0.1.1
