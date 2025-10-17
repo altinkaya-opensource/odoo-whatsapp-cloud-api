@@ -30,6 +30,7 @@
                         <group>
                             <field name="phone_number_id" />
                             <field name="api_token" password="True" />
+                            <field name="webhook_secret" password="True" />
                             <field name="api_version" />
                         </group>
                     </group>
