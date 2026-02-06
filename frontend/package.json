@@ -22,7 +22,7 @@
     "@phosphor-icons/react": "^2.1.8",
     "dayjs": "^1.11.13",
     "motion": "^12.12.1",
-    "next": "15.4.10",
+    "next": "15.5.10",
     "openai": "^6.5.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
