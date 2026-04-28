@@ -1,0 +1,224 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<odoo>
+    <record id="view_whatsapp_message_report_pivot" model="ir.ui.view">
+        <field name="name">whatsapp.message.report.pivot</field>
+        <field name="model">whatsapp.message.report</field>
+        <field name="arch" type="xml">
+            <pivot string="WhatsApp Statistics" sample="1">
+                <field name="partner_id" type="row" />
+                <field name="direction" type="col" />
+                <field name="count" type="measure" />
+                <field name="response_seconds" type="measure" widget="float_time" />
+                <field name="responded_24h" type="measure" />
+            </pivot>
+        </field>
+    </record>
+
+    <record id="view_whatsapp_message_report_graph" model="ir.ui.view">
+        <field name="name">whatsapp.message.report.graph</field>
+        <field name="model">whatsapp.message.report</field>
+        <field name="arch" type="xml">
+            <graph string="WhatsApp Statistics" type="bar" sample="1">
+                <field name="date_month" interval="month" type="row" />
+                <field name="direction" type="col" />
+                <field name="count" type="measure" />
+            </graph>
+        </field>
+    </record>
+
+    <record id="view_whatsapp_message_report_tree" model="ir.ui.view">
+        <field name="name">whatsapp.message.report.tree</field>
+        <field name="model">whatsapp.message.report</field>
+        <field name="arch" type="xml">
+            <tree create="false" edit="false" delete="false">
+                <field name="create_date" />
+                <field name="partner_id" />
+                <field name="backend_id" />
+                <field name="direction" />
+                <field name="message_type" />
+                <field name="agent_user_id" />
+                <field name="is_session_first_incoming" />
+                <field name="response_seconds" />
+                <field name="responded_24h" />
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_whatsapp_message_report_search" model="ir.ui.view">
+        <field name="name">whatsapp.message.report.search</field>
+        <field name="model">whatsapp.message.report</field>
+        <field name="arch" type="xml">
+            <search string="WhatsApp Statistics">
+                <field name="partner_id" />
+                <field name="agent_user_id" />
+                <field name="backend_id" />
+                <separator />
+                <filter
+                    name="direction_incoming"
+                    string="Incoming"
+                    domain="[('direction', '=', 'incoming')]"
+                />
+                <filter
+                    name="direction_outgoing"
+                    string="Outgoing"
+                    domain="[('direction', '=', 'outgoing')]"
+                />
+                <separator />
+                <filter
+                    name="session_first_incoming"
+                    string="Session First Incoming"
+                    domain="[('is_session_first_incoming', '=', True)]"
+                />
+                <filter
+                    name="partner_initiated"
+                    string="Partner-initiated Sessions"
+                    domain="[('session_started_by', '=', 'partner')]"
+                />
+                <separator />
+                <filter
+                    name="responded_5min"
+                    string="Replied ≤ 5 min"
+                    domain="[('responded_5min', '=', 1)]"
+                />
+                <filter
+                    name="responded_1h"
+                    string="Replied ≤ 1 h"
+                    domain="[('responded_1h', '=', 1)]"
+                />
+                <filter
+                    name="responded_24h"
+                    string="Replied ≤ 24 h"
+                    domain="[('responded_24h', '=', 1)]"
+                />
+                <filter
+                    name="not_responded"
+                    string="Not Answered (24h)"
+                    domain="[('is_session_first_incoming', '=', True), ('responded_24h', '=', 0)]"
+                />
+                <separator />
+                <filter
+                    name="exclude_template"
+                    string="Exclude Templates"
+                    domain="[('is_template', '=', False)]"
+                />
+                <filter
+                    name="exclude_reaction"
+                    string="Exclude Reactions"
+                    domain="[('is_reaction', '=', False)]"
+                />
+                <filter
+                    name="human_only"
+                    string="Human Agents Only"
+                    domain="[('is_system_user', '=', False)]"
+                />
+                <separator />
+                <filter
+                    name="filter_today"
+                    string="Today"
+                    domain="[('create_date', '&gt;=', context_today().strftime('%Y-%m-%d'))]"
+                />
+                <filter
+                    name="filter_this_week"
+                    string="This Week"
+                    domain="[
+                        ('create_date', '&gt;=', (context_today() + relativedelta(weeks=-1, days=1, weekday=0)).strftime('%Y-%m-%d')),
+                    ]"
+                />
+                <filter
+                    name="filter_this_month"
+                    string="This Month"
+                    domain="[
+                        ('create_date', '&gt;=', context_today().strftime('%Y-%m-01')),
+                    ]"
+                />
+                <filter
+                    name="filter_this_quarter"
+                    string="This Quarter"
+                    domain="[
+                        ('create_date', '&gt;=', (context_today() + relativedelta(months=-((context_today().month - 1) %% 3), day=1)).strftime('%Y-%m-%d')),
+                    ]"
+                />
+                <group expand="0" string="Group By">
+                    <filter
+                        name="group_partner"
+                        string="Partner"
+                        context="{'group_by': 'partner_id'}"
+                    />
+                    <filter
+                        name="group_agent"
+                        string="Agent"
+                        context="{'group_by': 'agent_user_id'}"
+                    />
+                    <filter
+                        name="group_backend"
+                        string="Backend"
+                        context="{'group_by': 'backend_id'}"
+                    />
+                    <filter
+                        name="group_direction"
+                        string="Direction"
+                        context="{'group_by': 'direction'}"
+                    />
+                    <filter
+                        name="group_message_type"
+                        string="Message Type"
+                        context="{'group_by': 'message_type'}"
+                    />
+                    <separator />
+                    <filter
+                        name="group_day"
+                        string="Day"
+                        context="{'group_by': 'date_day'}"
+                    />
+                    <filter
+                        name="group_week"
+                        string="Week"
+                        context="{'group_by': 'date_week'}"
+                    />
+                    <filter
+                        name="group_month"
+                        string="Month"
+                        context="{'group_by': 'date_month'}"
+                    />
+                    <filter
+                        name="group_hour"
+                        string="Hour of Day"
+                        context="{'group_by': 'hour_of_day'}"
+                    />
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_whatsapp_message_report" model="ir.actions.act_window">
+        <field name="name">WhatsApp Statistics</field>
+        <field name="res_model">whatsapp.message.report</field>
+        <field name="view_mode">pivot,graph,tree</field>
+        <field name="search_view_id" ref="view_whatsapp_message_report_search" />
+        <field
+            name="context"
+        >{'search_default_partner_initiated': 1, 'search_default_group_partner': 1}</field>
+        <field
+            name="groups_id"
+            eval="[(4, ref('whatsapp_cloud_api_backend.group_whatsapp_backend_user')), (4, ref('whatsapp_cloud_api_backend.group_whatsapp_backend_manager'))]"
+        />
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No WhatsApp activity to report yet.
+            </p>
+            <p>
+                Statistics are computed from WhatsApp messages exchanged
+                with partners (volume, answer rate, first-response time).
+            </p>
+        </field>
+    </record>
+
+    <menuitem
+        id="menu_whatsapp_message_report"
+        name="WhatsApp Statistics"
+        parent="account.menu_finance_reports"
+        action="action_whatsapp_message_report"
+        sequence="100"
+        groups="whatsapp_cloud_api_backend.group_whatsapp_backend_user,whatsapp_cloud_api_backend.group_whatsapp_backend_manager"
+    />
+</odoo>

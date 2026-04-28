@@ -63,6 +63,18 @@ class ResPartner(models.Model):
             "target": "new",
         }
 
+    def action_open_whatsapp_stats(self):
+        """Open the WhatsApp Statistics report filtered to this partner."""
+        self.ensure_one()
+        action = self.env["ir.actions.act_window"]._for_xml_id(
+            "whatsapp_cloud_api_backend.action_whatsapp_message_report"
+        )
+        action["domain"] = [("partner_id", "=", self.id)]
+        action["context"] = {
+            "search_default_partner_initiated": 1,
+        }
+        return action
+
     def _compute_avatar(self, avatar_field, image_field):
         """
         Override avatar computation to prevent Odoo from auto-generating

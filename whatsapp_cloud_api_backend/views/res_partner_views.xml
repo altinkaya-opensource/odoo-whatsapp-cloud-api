@@ -17,6 +17,16 @@
                 >
                     <span class="o_stat_text">WhatsApp</span>
                 </button>
+                <button
+                    name="action_open_whatsapp_stats"
+                    type="object"
+                    class="oe_stat_button"
+                    icon="fa-bar-chart"
+                    groups="whatsapp_cloud_api_backend.group_whatsapp_backend_user,whatsapp_cloud_api_backend.group_whatsapp_backend_manager"
+                    attrs="{'invisible': [('has_whatsapp_conversation', '=', False)]}"
+                >
+                    <span class="o_stat_text">WhatsApp Stats</span>
+                </button>
             </xpath>
         </field>
     </record>
