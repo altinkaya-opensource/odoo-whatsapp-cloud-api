@@ -66,7 +66,16 @@
     "suggestionsLoading": "Öneriler oluşturuluyor...",
     "suggestionsError": "Öneriler oluşturulamadı",
     "refreshSuggestions": "Önerileri yenile",
-    "serviceWindowExpired": "24 saatlik mesajlaşma penceresi sona erdi. Bu müşteriye yalnızca şablon mesajları gönderebilirsiniz."
+    "serviceWindowExpired": "24 saatlik mesajlaşma penceresi sona erdi. Bu müşteriye yalnızca şablon mesajları gönderebilirsiniz.",
+    "sendTemplate": "Şablon mesaj gönder"
+  },
+  "template": {
+    "title": "Şablon Mesaj Gönder",
+    "send": "Gönder",
+    "cancel": "İptal",
+    "empty": "Bu hesap için kullanılabilir şablon mesaj bulunamadı.",
+    "loading": "Şablonlar yükleniyor...",
+    "error": "Şablonlar yüklenemedi"
   },
   "chatList": {
     "title": "Sohbetler",

@@ -652,3 +652,52 @@ class WhatsAppBackend(models.Model):
         # Set human handoff mode - chatbot should not respond after template message
         thread.chatbot_ended = True
         return thread.send_template_message(template, record=record)
+
+    def get_simple_templates(self):
+        """Return APPROVED templates with no model_id for this backend's WABA.
+
+        Used by the frontend chat to list re-engagement templates that can be
+        sent without an Odoo record context (no variable substitution).
+        """
+        self.ensure_one()
+        templates = self.env["whatsapp.template"].search(
+            [
+                ("status", "=", "APPROVED"),
+                ("model_id", "=", False),
+                ("waba_id", "=", self.waba_id),
+                ("active", "=", True),
+            ]
+        )
+        return [
+            {
+                "id": template.id,
+                "name": template.name,
+                "language": template.language or "",
+                "category": template.category or "",
+                "header_text": template.header_text or "",
+                "body_text": template.body_text or "",
+                "footer_text": template.footer_text or "",
+                "preview": template.render_message_preview(None),
+            }
+            for template in templates
+        ]
+
+    def send_simple_template(self, phone_number, template_id):
+        """Send a no-record template message to a phone number.
+
+        Restricted to templates with no model_id so the frontend cannot
+        accidentally send model-bound templates without variable values.
+        """
+        self.ensure_one()
+        template = self.env["whatsapp.template"].browse(template_id)
+        if not template.exists():
+            raise UserError(_("Template not found."))
+        if template.model_id:
+            raise UserError(
+                _(
+                    "Template '%s' requires a record context and cannot be sent "
+                    "from the chat picker."
+                )
+                % template.name
+            )
+        return self.send_template_message(phone_number, template, record=None)

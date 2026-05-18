@@ -13,6 +13,7 @@ import Reaction from "../message/reaction";
 import ContactHeader from "./contact-header";
 import ChatMessage from "./chat-message";
 import AttachmentPicker from "../message/attachment-picker";
+import TemplatePicker from "../message/template-picker";
 import DragDropZone from "../message/drag-drop-zone";
 import SuggestionChips from "../message/suggestion-chips";
 import { useTranslations } from "@/app/context/translation-provider";
@@ -35,6 +36,8 @@ export default function CurrentChat() {
     startReply,
     loadPreviousMessages,
     targetMessageId,
+    phoneNumber,
+    backendId,
   } = useCurrentChat();
   const [messageText, setMessageText] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
@@ -826,6 +829,14 @@ export default function CurrentChat() {
                   externalFile={droppedFile}
                   onExternalFileProcessed={handleDroppedFileProcessed}
                 />
+                {isServiceWindowExpired && chatId && phoneNumber && (
+                  <TemplatePicker
+                    threadId={Number(chatId)}
+                    phoneNumber={phoneNumber}
+                    backendId={backendId}
+                    disabled={isSending}
+                  />
+                )}
                 <button
                   type="button"
                   onClick={handleTranslate}

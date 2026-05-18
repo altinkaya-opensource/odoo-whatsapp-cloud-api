@@ -66,7 +66,16 @@
     "suggestionsLoading": "Generating suggestions...",
     "suggestionsError": "Failed to generate suggestions",
     "refreshSuggestions": "Refresh suggestions",
-    "serviceWindowExpired": "The 24-hour messaging window has expired. You can only send template messages to this customer."
+    "serviceWindowExpired": "The 24-hour messaging window has expired. You can only send template messages to this customer.",
+    "sendTemplate": "Send template message"
+  },
+  "template": {
+    "title": "Send Template Message",
+    "send": "Send",
+    "cancel": "Cancel",
+    "empty": "No template messages available for this account.",
+    "loading": "Loading templates...",
+    "error": "Failed to load templates"
   },
   "chatList": {
     "title": "Chats",
