@@ -212,13 +212,4 @@
             </p>
         </field>
     </record>
-
-    <menuitem
-        id="menu_whatsapp_message_report"
-        name="WhatsApp Statistics"
-        parent="account.menu_finance_reports"
-        action="action_whatsapp_message_report"
-        sequence="100"
-        groups="whatsapp_cloud_api_backend.group_whatsapp_backend_user,whatsapp_cloud_api_backend.group_whatsapp_backend_manager"
-    />
 </odoo>
