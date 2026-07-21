@@ -26,10 +26,27 @@
                         <group>
                             <field name="active" invisible="1" />
                             <field name="sequence" />
-                            <field name="main_menu_button_text" />
+                            <field name="greeting_only" />
+                            <field
+                                name="main_menu_button_text"
+                                attrs="{'invisible': [('greeting_only', '=', True)]}"
+                            />
+                        </group>
+                        <group
+                            string="Greeting Messages"
+                            attrs="{'invisible': [('greeting_only', '=', False)]}"
+                        >
+                            <field
+                                name="greeting_message"
+                                attrs="{'required': [('greeting_only', '=', True)]}"
+                            />
+                            <field
+                                name="out_of_hours_message"
+                                attrs="{'required': [('greeting_only', '=', True)]}"
+                            />
                         </group>
                     </group>
-                    <notebook>
+                    <notebook attrs="{'invisible': [('greeting_only', '=', True)]}">
                         <page string="Conversation Scripts" name="scripts">
                             <field name="script_ids" mode="tree">
                                 <tree default_order="sequence">
@@ -54,6 +71,7 @@
             <tree>
                 <field name="sequence" widget="handle" />
                 <field name="title" />
+                <field name="greeting_only" />
                 <field name="active" invisible="1" />
             </tree>
         </field>
