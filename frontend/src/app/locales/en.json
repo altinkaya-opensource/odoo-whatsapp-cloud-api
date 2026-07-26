@@ -236,7 +236,7 @@
     "blocked": {
       "title": "WhatsApp is active in another tab",
       "message": "To use WhatsApp in this tab, close the other tab or refresh this page.",
-      "footer": "Close the other tab and this one takes over."
+      "footer": "This tab activates when the other one closes."
     }
   }
 }

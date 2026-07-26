@@ -236,7 +236,7 @@
     "blocked": {
       "title": "WhatsApp başka bir sekmede aktif",
       "message": "WhatsApp'ı bu sekmede kullanmak için diğer sekmeyi kapatın veya bu sayfayı yenileyin.",
-      "footer": "Diğer sekmeyi kapatın, bu sekme devralır."
+      "footer": "Diğer sekme kapandığında bu sekme devreye girer."
     }
   }
 }
