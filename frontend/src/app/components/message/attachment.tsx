@@ -11,7 +11,8 @@ import {
   Image as ImageIcon,
 } from "@phosphor-icons/react";
 import { useAuth } from "@/app/hooks/use-auth";
-import { useState, useEffect } from "react";
+import { useTranslations } from "@/app/context/translation-provider";
+import { useEffect, useState, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 
 type AttachmentDisplayProps = {
@@ -74,98 +75,95 @@ const getFileIcon = (mimetype: string) => {
 
 const formatFileSize = (bytes: number): string => {
   if (bytes === 0) return "0 B";
-  const k = 1024;
   const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+  const index = Math.floor(Math.log(bytes) / Math.log(1024));
+  return `${parseFloat((bytes / 1024 ** index).toFixed(1))} ${sizes[index]}`;
 };
 
 export default function AttachmentDisplay({
   attachment,
 }: AttachmentDisplayProps) {
   const { sessionId } = useAuth();
+  const { t } = useTranslations();
   const [isImageLoaded, setIsImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
-
   const attachmentType =
     attachment.type ?? getAttachmentType(attachment.mimetype);
-
-  useEffect(() => {
-    // Set portal root to document.body for full-screen overlay
-    if (typeof document !== "undefined") {
-      setPortalRoot(document.body);
-    }
-  }, []);
-
-  // Proxy through Next.js API to avoid CORS issues
   const downloadUrl = `/api/attachments/download?url=${encodeURIComponent(attachment.url)}&session_id=${sessionId}`;
 
-  const handleDownload = async (e: React.MouseEvent) => {
-    e.stopPropagation();
+  useEffect(() => {
+    setPortalRoot(document.body);
+  }, []);
+
+  useEffect(() => {
+    if (!isLightboxOpen) {
+      return;
+    }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsLightboxOpen(false);
+      }
+    };
+
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [isLightboxOpen]);
+
+  const handleDownload = async (event: MouseEvent<HTMLElement>) => {
+    event.stopPropagation();
     try {
-      // Fetch through Next.js proxy
       const response = await fetch(downloadUrl, {
         method: "GET",
-        headers: {
-          "x-session-id": sessionId || "",
-        },
+        headers: { "x-session-id": sessionId || "" },
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(
-          errorData.error || `Download failed: ${response.status}`
-        );
+        throw new Error(`Download failed: ${response.status}`);
       }
 
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = attachment.name;
-      a.style.display = "none";
-      document.body.appendChild(a);
-      a.click();
-
-      // Cleanup
-      setTimeout(() => {
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = attachment.name;
+      link.style.display = "none";
+      document.body.appendChild(link);
+      link.click();
+      window.setTimeout(() => {
         window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
+        document.body.removeChild(link);
       }, 100);
     } catch (error) {
-      alert(
-        `Failed to download file: ${error instanceof Error ? error.message : "Unknown error"}`
-      );
+      console.error("Attachment download failed:", error);
+      alert(t("attachment.downloadError", { name: attachment.name }));
     }
   };
 
-  // Image attachment
   if (attachmentType === "image") {
     return (
       <>
-        <div
-          className="relative max-w-sm cursor-pointer group"
-          onClick={() => setIsLightboxOpen(true)}
-        >
+        <div className="group relative max-w-sm overflow-hidden rounded-2xl">
           {!isImageLoaded && !imageError && (
-            <div className="w-full h-48 bg-[rgb(var(--bg-secondary)/var(--bg-secondary-opacity))] rounded-lg animate-pulse flex items-center justify-center">
+            <div className="flex h-48 w-full items-center justify-center rounded-2xl bg-[rgb(var(--bg-secondary))] animate-pulse">
               <ImageIcon className="size-12 text-[rgb(var(--text-secondary)/var(--text-tertiary-opacity))]" />
             </div>
           )}
           {imageError && (
-            <div className="w-full h-48 bg-[rgb(var(--bg-secondary)/var(--bg-secondary-opacity))] rounded-lg flex flex-col items-center justify-center gap-2">
+            <div className="flex h-48 w-full flex-col items-center justify-center gap-2 rounded-2xl bg-[rgb(var(--bg-secondary))]">
               <ImageIcon className="size-12 text-[rgb(var(--text-secondary)/var(--text-tertiary-opacity))]" />
-              <p className="text-xs text-[rgb(var(--text-secondary)/var(--text-secondary-opacity))]">
-                Failed to load image
+              <p className="text-xs text-[rgb(var(--text-secondary))]">
+                {t("attachment.imageLoadError")}
               </p>
               <button
                 onClick={handleDownload}
-                className="text-xs text-[rgb(var(--accent-primary))] hover:text-[rgb(var(--accent-primary)/0.8)] flex items-center gap-1"
+                className="flex items-center gap-1 text-xs font-semibold text-[rgb(var(--accent-primary))] hover:text-[rgb(var(--accent-active))]"
+                type="button"
               >
                 <DownloadSimple className="size-4" />
-                Download
+                {t("attachment.download")}
               </button>
             </div>
           )}
@@ -173,51 +171,68 @@ export default function AttachmentDisplay({
           <img
             src={downloadUrl}
             alt={attachment.name}
-            className={`rounded-lg max-h-96 object-contain ${!isImageLoaded ? "hidden" : "block"}`}
+            className={`max-h-96 rounded-2xl object-contain ${!isImageLoaded ? "hidden" : "block"}`}
             onLoad={() => setIsImageLoaded(true)}
             onError={() => setImageError(true)}
           />
           {isImageLoaded && (
-            <div className="absolute inset-0 bg-[rgb(var(--bg-primary)/0)] group-hover:bg-[rgb(var(--bg-primary)/0.2)] transition-colors rounded-lg flex items-center justify-center">
+            <>
               <button
-                onClick={handleDownload}
-                className="opacity-0 group-hover:opacity-100 transition-opacity bg-[rgb(var(--bg-primary)/0.6)] text-white p-2 rounded-full"
-              >
-                <DownloadSimple className="size-5" weight="bold" />
-              </button>
-            </div>
+                type="button"
+                onClick={() => setIsLightboxOpen(true)}
+                className="absolute inset-0 z-10 cursor-zoom-in"
+                aria-label={attachment.name}
+              />
+              <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-[rgb(var(--bg-primary)/0)] transition-colors group-hover:bg-[rgb(var(--bg-primary)/0.2)]">
+                <button
+                  onClick={handleDownload}
+                  className="pointer-events-auto z-20 rounded-xl bg-[rgb(var(--bg-card)/0.9)] p-2 text-[rgb(var(--text-primary))] opacity-0 shadow-sm transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                  type="button"
+                  title={t("attachment.download")}
+                  aria-label={t("attachment.download")}
+                >
+                  <DownloadSimple className="size-5" weight="bold" />
+                </button>
+              </div>
+            </>
           )}
         </div>
 
-        {/* Lightbox - Portal to body for full-screen coverage */}
         {isLightboxOpen &&
           portalRoot &&
           createPortal(
             <div
-              className="fixed inset-0 bg-[rgb(var(--bg-primary)/0.95)] flex items-center justify-center p-4"
+              className="fixed inset-0 flex items-center justify-center bg-[rgb(var(--bg-overlay)/0.92)] p-4 backdrop-blur-sm"
               style={{ zIndex: 9999 }}
               onClick={() => setIsLightboxOpen(false)}
             >
-              <div className="relative w-full h-full flex items-center justify-center">
+              <div
+                className="relative flex size-full items-center justify-center"
+                role="dialog"
+                aria-modal="true"
+                aria-label={attachment.name}
+                onClick={(event) => event.stopPropagation()}
+              >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={downloadUrl}
                   alt={attachment.name}
-                  className="max-w-full max-h-full object-contain"
-                  onClick={(e) => e.stopPropagation()}
+                  className="max-h-full max-w-full object-contain"
                 />
                 <button
                   onClick={() => setIsLightboxOpen(false)}
-                  className="absolute top-4 right-4 bg-[rgb(var(--bg-primary)/0.7)] text-[rgb(var(--text-primary))] px-4 py-2 rounded-lg hover:bg-[rgb(var(--bg-primary)/0.9)] transition-colors"
+                  className="secondary-action absolute right-4 top-4 px-4 py-2 text-sm font-semibold"
+                  type="button"
                 >
-                  Close
+                  {t("attachment.closePreview")}
                 </button>
                 <button
                   onClick={handleDownload}
-                  className="absolute bottom-4 right-4 bg-[rgb(var(--accent-primary))] text-white px-4 py-2 rounded-lg hover:bg-[rgb(var(--accent-primary)/0.8)] flex items-center gap-2 transition-colors"
+                  className="primary-action absolute bottom-4 right-4 flex items-center gap-2 px-4 py-2 text-sm font-semibold"
+                  type="button"
                 >
                   <DownloadSimple className="size-5" weight="bold" />
-                  Download
+                  {t("attachment.download")}
                 </button>
               </div>
             </div>,
@@ -227,22 +242,23 @@ export default function AttachmentDisplay({
     );
   }
 
-  // Video attachment
   if (attachmentType === "video") {
     return (
-      <div className="relative max-w-sm">
+      <div className="relative max-w-sm overflow-hidden rounded-2xl">
         <video
           controls
-          className="rounded-lg max-h-96 w-full bg-[rgb(var(--bg-primary))]"
+          className="max-h-96 w-full rounded-2xl bg-[rgb(var(--bg-primary))]"
           preload="metadata"
         >
           <source src={downloadUrl} type={attachment.mimetype} />
-          Your browser does not support the video tag.
+          {t("attachment.videoUnsupported")}
         </video>
         <button
           onClick={handleDownload}
-          className="absolute top-2 right-2 bg-[rgb(var(--bg-primary)/0.6)] text-white p-2 rounded-full hover:bg-[rgb(var(--bg-primary)/0.8)]"
-          title="Download video"
+          className="icon-action absolute right-2 top-2 z-10 size-9 bg-[rgb(var(--bg-card)/0.9)] shadow-sm"
+          title={t("attachment.downloadVideo")}
+          aria-label={t("attachment.downloadVideo")}
+          type="button"
         >
           <DownloadSimple className="size-4" weight="bold" />
         </button>
@@ -250,49 +266,49 @@ export default function AttachmentDisplay({
     );
   }
 
-  // Audio attachment
   if (attachmentType === "audio") {
     return (
-      <div className="bg-[rgb(var(--bg-secondary)/var(--bg-secondary-opacity))] rounded-lg p-4 max-w-sm">
-        <div className="flex items-center gap-3 mb-3">
+      <div className="max-w-sm rounded-xl border border-[rgb(var(--border-primary)/var(--border-primary-opacity))] bg-[rgb(var(--bg-secondary))] p-4">
+        <div className="mb-3 flex items-center gap-3">
           <FileAudio
             className="size-8 text-[rgb(var(--status-info))]"
             weight="fill"
           />
-          <div className="flex-1 min-w-0">
-            <p className="text-[rgb(var(--text-primary))] text-sm truncate">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm text-[rgb(var(--text-primary))]">
               {attachment.name}
             </p>
-            <p className="text-[rgb(var(--text-secondary)/var(--text-secondary-opacity))] text-xs">
+            <p className="text-xs text-[rgb(var(--text-secondary))]">
               {formatFileSize(attachment.file_size)}
             </p>
           </div>
         </div>
         <audio controls className="w-full">
           <source src={downloadUrl} type={attachment.mimetype} />
-          Your browser does not support the audio element.
+          {t("attachment.audioUnsupported")}
         </audio>
       </div>
     );
   }
 
-  // Document attachment
   return (
-    <div className="bg-[rgb(var(--bg-secondary)/var(--bg-secondary-opacity))] rounded-lg p-4 max-w-sm hover:bg-[rgb(var(--bg-secondary)/var(--bg-quaternary-opacity))] transition-colors">
+    <div className="max-w-sm rounded-xl border border-[rgb(var(--border-primary)/var(--border-primary-opacity))] bg-[rgb(var(--bg-secondary))] p-4 transition-colors hover:bg-[rgb(var(--bg-tertiary))]">
       <div className="flex items-center gap-3">
         {getFileIcon(attachment.mimetype)}
-        <div className="flex-1 min-w-0">
-          <p className="text-[rgb(var(--text-primary))] text-sm truncate">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm text-[rgb(var(--text-primary))]">
             {attachment.name}
           </p>
-          <p className="text-[rgb(var(--text-secondary)/var(--text-secondary-opacity))] text-xs">
+          <p className="text-xs text-[rgb(var(--text-secondary))]">
             {formatFileSize(attachment.file_size)}
           </p>
         </div>
         <button
           onClick={handleDownload}
-          className="text-[rgb(var(--accent-primary))] hover:text-[rgb(var(--accent-primary)/0.8)] p-2"
-          title="Download file"
+          className="icon-action size-9 text-[rgb(var(--accent-primary))]"
+          title={t("attachment.downloadFile")}
+          aria-label={t("attachment.downloadFile")}
+          type="button"
         >
           <DownloadSimple className="size-5" weight="bold" />
         </button>

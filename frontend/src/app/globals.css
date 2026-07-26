@@ -1,174 +1,280 @@
 @import "tailwindcss";
 
-/* Theme CSS Variables */
-:root[data-theme="dark"] {
-  /* Background colors */
-  --bg-primary: 0 0 0; /* black */
-  --bg-secondary: 255 255 255; /* white with opacity */
-  --bg-secondary-opacity: 0.1;
-  --bg-tertiary-opacity: 0.15;
-  --bg-quaternary-opacity: 0.2;
-  --bg-sidebar: 0 0 0; /* black */
-  --bg-sidebar-opacity: 0.85;
-  --bg-mobile-nav: 0 0 0; /* black */
-  --bg-mobile-nav-opacity: 0.95;
-
-  /* Chat bubble colors */
-  --bg-chat-outgoing: 6 78 59; /* emerald-900 */
-  --bg-chat-incoming: 255 255 255; /* white */
-  --bg-chat-incoming-opacity: 0.2;
-  --bg-reply-preview: 0 0 0; /* black */
-  --bg-reply-preview-opacity: 0.4;
-
-  /* Text colors */
-  --text-primary: 255 255 255; /* white */
-  --text-secondary: 255 255 255; /* white */
-  --text-secondary-opacity: 0.5;
-  --text-tertiary-opacity: 0.7;
-  --text-quaternary-opacity: 0.8;
-  --text-message-time: 255 255 255; /* white */
-  --text-message-time-opacity: 0.8;
-
-  /* Border colors */
-  --border-primary: 209 213 219; /* gray-300 */
-  --border-primary-opacity: 0.2;
-  --border-secondary: 107 114 128; /* gray-500 */
-  --border-secondary-opacity: 0.65;
-
-  /* Accent colors */
-  --accent-primary: 16 185 129; /* emerald-500 */
-  --accent-active: 52 211 153; /* emerald-400 */
-  --accent-hover: 255 255 255; /* white */
-  --accent-hover-opacity: 0.2;
-
-  /* Status colors */
-  --status-error: 248 113 113; /* red-400 */
-  --status-success: 16 185 129; /* emerald-500 */
-  --status-info: 96 165 250; /* blue-400 */
-
-  /* Scrollbar colors */
-  --scrollbar-thumb: 255 255 255; /* white */
-  --scrollbar-thumb-opacity: 0.25;
-  --scrollbar-thumb-hover-opacity: 0.35;
-  --scrollbar-thumb-active: 16 185 129; /* emerald-500 */
-  --scrollbar-thumb-active-opacity: 0.6;
-
-  /* Special backgrounds */
-  --bg-input: 255 255 255; /* white */
-  --bg-input-opacity: 0.05;
-  --bg-button-secondary: 255 255 255; /* white */
-  --bg-button-secondary-opacity: 0.1;
-  --bg-overlay: 0 0 0; /* black */
-  --bg-overlay-opacity: 0.8;
-  --bg-tooltip: 55 65 81; /* gray-700 */
-  --bg-tooltip-opacity: 0.9;
+:root {
+  --workspace-shell-overlay: radial-gradient(
+    circle at 0 0,
+    rgb(var(--accent-primary) / 0.11),
+    transparent 28rem
+  );
+  --workspace-shell-overlay-size: auto;
+  --workspace-canvas-pattern: radial-gradient(
+    rgb(var(--border-primary) / 0.22) 0.65px,
+    transparent 0.65px
+  );
+  --workspace-canvas-size: 18px 18px;
 }
 
-:root[data-theme="light"] {
-  /* Background colors - Clean, modern hierarchy */
-  --bg-primary: 255 255 255; /* #FFFFFF - pure white main area (Telegram/Discord style) */
-  --bg-secondary: 247 247 248; /* #F7F7F8 - subtle grey for contrast areas */
+:root[data-background="grid"] {
+  --workspace-shell-overlay:
+    linear-gradient(rgb(var(--border-primary) / 0.09) 1px, transparent 1px),
+    linear-gradient(
+      90deg,
+      rgb(var(--border-primary) / 0.09) 1px,
+      transparent 1px
+    ),
+    radial-gradient(
+      circle at 0 0,
+      rgb(var(--accent-primary) / 0.08),
+      transparent 28rem
+    );
+  --workspace-shell-overlay-size: 32px 32px, 32px 32px, auto;
+  --workspace-canvas-pattern:
+    linear-gradient(rgb(var(--border-primary) / 0.12) 1px, transparent 1px),
+    linear-gradient(
+      90deg,
+      rgb(var(--border-primary) / 0.12) 1px,
+      transparent 1px
+    );
+  --workspace-canvas-size: 20px 20px;
+}
+
+:root[data-background="plain"] {
+  --workspace-shell-overlay: none;
+  --workspace-canvas-pattern: none;
+}
+
+:root[data-text-size="compact"] {
+  font-size: 93.75%;
+}
+
+:root[data-text-size="comfortable"] {
+  font-size: 100%;
+}
+
+:root[data-text-size="large"] {
+  font-size: 112.5%;
+}
+
+/*
+ * Product tokens
+ * Odoo actions use plum, WhatsApp/channel state uses green. Keeping those
+ * meanings separate makes a busy operator workspace faster to scan.
+ */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg-primary: 21 20 26;
+  --bg-secondary: 31 29 37;
+  --bg-tertiary: 42 39 49;
+  --bg-quaternary: 55 51 63;
+  --bg-sidebar: 24 22 30;
+  --bg-mobile-nav: 24 22 30;
+  --bg-card: 35 32 42;
+  --bg-card-opacity: 1;
   --bg-secondary-opacity: 1;
   --bg-tertiary-opacity: 1;
   --bg-quaternary-opacity: 1;
-  --bg-sidebar: 247 247 248; /* #F7F7F8 - light grey sidebar (Discord-inspired) */
   --bg-sidebar-opacity: 1;
-  --bg-mobile-nav: 255 255 255; /* #FFFFFF - white nav bar */
   --bg-mobile-nav-opacity: 1;
-  --bg-card: 255 255 255; /* #FFFFFF - white cards */
-  --bg-card-opacity: 1;
 
-  /* Chat bubble colors - Clear distinction */
-  --bg-chat-outgoing: 220 248 198; /* #DCF8C6 - WhatsApp green for sent */
-  --bg-chat-incoming: 240 240 242; /* #F0F0F2 - light grey for received (iMessage-inspired) */
+  --bg-chat-outgoing: 34 96 66;
+  --message-link-outgoing: 195 255 225;
+  --message-link-outgoing-hover: 224 255 239;
+  --bg-chat-incoming: 42 39 49;
   --bg-chat-incoming-opacity: 1;
-  --bg-reply-preview: 235 235 237; /* #EBEBED - slightly darker grey for quoted messages */
+  --bg-reply-preview: 29 55 44;
   --bg-reply-preview-opacity: 1;
 
-  /* Text colors - High contrast, readable */
-  --text-primary: 0 0 0; /* #000000 - true black for maximum readability */
-  --text-secondary: 116 116 128; /* #747480 - iOS grey for secondary text */
+  --text-primary: 245 242 248;
+  --text-secondary: 190 183 198;
   --text-secondary-opacity: 1;
-  --text-tertiary-opacity: 1;
-  --text-quaternary-opacity: 1;
-  --text-message-time: 142 142 147; /* #8E8E93 - iOS muted grey for timestamps */
-  --text-message-time-opacity: 1;
+  --text-tertiary-opacity: 0.82;
+  --text-quaternary-opacity: 0.66;
+  --text-message-time: 211 205 216;
+  --text-message-time-opacity: 0.74;
 
-  /* Border colors - Subtle but visible */
-  --border-primary: 229 229 234; /* #E5E5EA - iOS-style light border */
-  --border-primary-opacity: 1;
-  --border-secondary: 209 209 214; /* #D1D1D6 - slightly darker border */
-  --border-secondary-opacity: 1;
+  --border-primary: 104 96 114;
+  --border-primary-opacity: 0.42;
+  --border-secondary: 139 129 151;
+  --border-secondary-opacity: 0.5;
 
-  /* Accent colors - WhatsApp green primary */
-  --accent-primary: 37 211 102; /* #25D366 - WhatsApp brand green */
-  --accent-active: 33 189 92; /* #21BD5C - slightly darker active state */
-  --accent-hover: 242 242 247; /* #F2F2F7 - iOS-style light hover */
-  --accent-hover-opacity: 1;
+  --accent-primary: 125 91 118;
+  --accent-active: 163 121 153;
+  --accent-hover: 125 91 118;
+  --accent-hover-opacity: 0.2;
 
-  /* Status colors - Standard, recognizable */
-  --status-error: 255 59 48; /* #FF3B30 - iOS red for errors */
-  --status-success: 37 211 102; /* #25D366 - WhatsApp green for success */
-  --status-info: 0 122 255; /* #007AFF - iOS blue for info */
-  --status-warning: 255 149 0; /* #FF9500 - iOS orange for warnings */
+  --status-error: 251 113 133;
+  --status-success: 81 207 128;
+  --status-info: 125 167 231;
+  --status-warning: 251 191 36;
 
-  /* Scrollbar colors */
-  --scrollbar-thumb: 199 199 204; /* #C7C7CC - iOS-style scrollbar */
-  --scrollbar-thumb-opacity: 1;
-  --scrollbar-thumb-hover-opacity: 1;
-  --scrollbar-thumb-active: 37 211 102; /* #25D366 - WhatsApp green */
-  --scrollbar-thumb-active-opacity: 1;
+  --scrollbar-thumb: 157 147 169;
+  --scrollbar-thumb-opacity: 0.38;
+  --scrollbar-thumb-hover-opacity: 0.58;
+  --scrollbar-thumb-active: 163 121 153;
+  --scrollbar-thumb-active-opacity: 0.82;
 
-  /* Special backgrounds */
-  --bg-input: 255 255 255; /* #FFFFFF - white input with border */
+  --bg-input: 31 29 37;
   --bg-input-opacity: 1;
-  --bg-button-secondary: 242 242 247; /* #F2F2F7 - iOS secondary button */
+  --bg-button-secondary: 55 51 63;
   --bg-button-secondary-opacity: 1;
-  --bg-overlay: 0 0 0; /* black overlay */
-  --bg-overlay-opacity: 0.5;
-  --bg-tooltip: 44 44 46; /* #2C2C2E - iOS dark grey for tooltips */
-  --bg-tooltip-opacity: 0.95;
+  --bg-overlay: 9 8 12;
+  --bg-overlay-opacity: 0.72;
+  --bg-tooltip: 55 51 63;
+  --bg-tooltip-opacity: 1;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg-primary: 248 247 249;
+  --bg-secondary: 242 240 244;
+  --bg-tertiary: 234 231 238;
+  --bg-quaternary: 223 218 228;
+  --bg-sidebar: 252 251 253;
+  --bg-mobile-nav: 252 251 253;
+  --bg-card: 255 255 255;
+  --bg-card-opacity: 1;
+  --bg-secondary-opacity: 1;
+  --bg-tertiary-opacity: 1;
+  --bg-quaternary-opacity: 1;
+  --bg-sidebar-opacity: 1;
+  --bg-mobile-nav-opacity: 1;
+
+  --bg-chat-outgoing: 216 245 228;
+  --message-link-outgoing: 8 86 52;
+  --message-link-outgoing-hover: 5 68 41;
+  --bg-chat-incoming: 255 255 255;
+  --bg-chat-incoming-opacity: 1;
+  --bg-reply-preview: 233 245 238;
+  --bg-reply-preview-opacity: 1;
+
+  --text-primary: 38 35 43;
+  --text-secondary: 100 92 109;
+  --text-secondary-opacity: 1;
+  --text-tertiary-opacity: 0.82;
+  --text-quaternary-opacity: 0.64;
+  --text-message-time: 100 92 109;
+  --text-message-time-opacity: 0.72;
+
+  --border-primary: 205 199 211;
+  --border-primary-opacity: 0.75;
+  --border-secondary: 174 165 183;
+  --border-secondary-opacity: 0.78;
+
+  --accent-primary: 113 75 103;
+  --accent-active: 89 54 82;
+  --accent-hover: 113 75 103;
+  --accent-hover-opacity: 0.1;
+
+  --status-error: 191 51 65;
+  --status-success: 31 168 85;
+  --status-info: 75 122 184;
+  --status-warning: 181 71 8;
+
+  --scrollbar-thumb: 167 157 176;
+  --scrollbar-thumb-opacity: 0.62;
+  --scrollbar-thumb-hover-opacity: 0.86;
+  --scrollbar-thumb-active: 113 75 103;
+  --scrollbar-thumb-active-opacity: 0.9;
+
+  --bg-input: 255 255 255;
+  --bg-input-opacity: 1;
+  --bg-button-secondary: 242 240 244;
+  --bg-button-secondary-opacity: 1;
+  --bg-overlay: 38 35 43;
+  --bg-overlay-opacity: 0.46;
+  --bg-tooltip: 38 35 43;
+  --bg-tooltip-opacity: 1;
 }
 
 html,
 body {
-  height: 100vh;
-  width: 100vw;
+  min-height: 100dvh;
+  width: 100%;
   overflow: hidden;
 }
 
+body {
+  background: rgb(var(--bg-primary));
+  color: rgb(var(--text-primary));
+  font-family: var(--font-geist-sans), Arial, sans-serif;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button:not(:disabled),
+a[href] {
+  cursor: pointer;
+}
+
+::selection {
+  background: rgb(var(--accent-primary) / 0.28);
+  color: rgb(var(--text-primary));
+}
+
+:focus-visible {
+  outline: 2px solid rgb(var(--accent-primary));
+  outline-offset: 2px;
+}
+
+/* Sent bubbles are green, so Odoo's plum accent is not used for message links. */
+.message-bubble--outgoing .message-link {
+  color: rgb(var(--message-link-outgoing));
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  text-decoration-line: underline;
+  text-decoration-thickness: 1.5px;
+  text-decoration-color: currentColor;
+  text-underline-offset: 0.2em;
+}
+
+.message-bubble--outgoing .message-link:hover {
+  color: rgb(var(--message-link-outgoing-hover));
+  text-decoration-thickness: 2px;
+}
+
+.message-bubble--outgoing .message-link:focus-visible {
+  outline-color: rgb(var(--message-link-outgoing));
+  outline-offset: 3px;
+}
+
 .scrollbar-hide {
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 .scrollbar-hide::-webkit-scrollbar {
-  display: none; /* Chrome, Safari, and Opera */
+  display: none;
 }
 
-/* Custom Scrollbar Styles - Cross-Browser Compatible */
 .custom-scrollbar {
-  /* Firefox */
   scrollbar-width: thin;
   scrollbar-color: rgb(var(--scrollbar-thumb) / var(--scrollbar-thumb-opacity))
     transparent;
   scrollbar-gutter: stable;
 }
 
-/* Webkit browsers (Chrome, Safari, Edge, Opera) */
 .custom-scrollbar::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
-.custom-scrollbar::-webkit-scrollbar-track {
+.custom-scrollbar::-webkit-scrollbar-track,
+.custom-scrollbar::-webkit-scrollbar-corner {
   background: transparent;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
   background: rgb(var(--scrollbar-thumb) / var(--scrollbar-thumb-opacity));
-  border-radius: 4px;
   border: 2px solid transparent;
+  border-radius: 999px;
   background-clip: padding-box;
 }
 
@@ -186,15 +292,145 @@ body {
   background-clip: padding-box;
 }
 
-/* Corner (where horizontal and vertical scrollbars meet) */
-.custom-scrollbar::-webkit-scrollbar-corner {
-  background: transparent;
+.app-shell {
+  min-height: 100dvh;
+  background: var(--workspace-shell-overlay), rgb(var(--bg-primary));
+  background-size: var(--workspace-shell-overlay-size);
 }
 
-.background-custom {
-  background-color: #ffffff;
-  opacity: 0.03;
-  background-image:
-    repeating-radial-gradient(circle at 0 0, transparent 0, #ffffff 10px),
-    repeating-linear-gradient(#17171755, #171717);
+.workspace-rail {
+  background: rgb(var(--bg-sidebar));
+  border-right: 1px solid
+    rgb(var(--border-primary) / var(--border-primary-opacity));
+  box-shadow: 1px 0 0 rgb(var(--bg-card) / 0.3);
+}
+
+.workspace-list {
+  background: rgb(var(--bg-card));
+  border-right: 1px solid
+    rgb(var(--border-primary) / var(--border-primary-opacity));
+}
+
+.workspace-conversation {
+  background: rgb(var(--bg-primary));
+  min-width: 0;
+}
+
+.workspace-context {
+  background: rgb(var(--bg-card));
+  border-left: 1px solid
+    rgb(var(--border-primary) / var(--border-primary-opacity));
+}
+
+.conversation-canvas {
+  background-color: rgb(var(--bg-primary));
+  background-image: var(--workspace-canvas-pattern);
+  background-size: var(--workspace-canvas-size);
+}
+
+.surface-card {
+  background: rgb(var(--bg-card));
+  border: 1px solid rgb(var(--border-primary) / var(--border-primary-opacity));
+  box-shadow: 0 16px 34px rgb(38 35 43 / 0.08);
+}
+
+:root[data-theme="dark"] .surface-card {
+  box-shadow: 0 16px 34px rgb(0 0 0 / 0.22);
+}
+
+.control-field {
+  background: rgb(var(--bg-input));
+  border: 1px solid rgb(var(--border-primary) / var(--border-primary-opacity));
+  border-radius: 0.75rem;
+  color: rgb(var(--text-primary));
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    background-color 160ms ease;
+}
+
+.control-field:hover {
+  border-color: rgb(var(--border-secondary) / var(--border-secondary-opacity));
+}
+
+.control-field:focus {
+  border-color: rgb(var(--accent-primary));
+  box-shadow: 0 0 0 3px rgb(var(--accent-primary) / 0.16);
+  outline: none;
+}
+
+.primary-action {
+  background: rgb(var(--accent-primary));
+  border: 1px solid rgb(var(--accent-primary));
+  border-radius: 0.75rem;
+  color: white;
+  transition:
+    transform 160ms ease,
+    background-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.primary-action:hover:not(:disabled) {
+  background: rgb(var(--accent-active));
+  box-shadow: 0 10px 20px rgb(var(--accent-primary) / 0.22);
+}
+
+.primary-action:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.secondary-action {
+  background: rgb(var(--bg-button-secondary));
+  border: 1px solid rgb(var(--border-primary) / var(--border-primary-opacity));
+  border-radius: 0.75rem;
+  color: rgb(var(--text-primary));
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    transform 160ms ease;
+}
+
+.secondary-action:hover:not(:disabled) {
+  background: rgb(var(--bg-tertiary));
+  border-color: rgb(var(--border-secondary) / var(--border-secondary-opacity));
+}
+
+.secondary-action:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.icon-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  color: rgb(var(--text-secondary));
+  transition:
+    background-color 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
+}
+
+.icon-action:hover:not(:disabled) {
+  background: rgb(var(--accent-hover) / var(--accent-hover-opacity));
+  color: rgb(var(--accent-primary));
+}
+
+.icon-action:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }

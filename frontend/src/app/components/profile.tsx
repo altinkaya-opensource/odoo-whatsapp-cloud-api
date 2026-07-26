@@ -1,10 +1,34 @@
 "use client";
 
-import { UserIcon } from "@phosphor-icons/react";
+import { UserIcon, UsersThreeIcon } from "@phosphor-icons/react";
 import Image from "next/image";
-import { PropsWithChildren, useState, useEffect, useRef } from "react";
+import { PropsWithChildren, useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "@/app/context/theme-provider";
-import { generateAvatarColor } from "@/app/lib/avatar-colors";
+import { getAvatarColors, type AvatarSeed } from "@/app/lib/avatar-colors";
+
+type ProfileKind = "person" | "group";
+
+function getInitials(label: string | undefined) {
+  const normalizedLabel = label?.trim();
+
+  if (!normalizedLabel || normalizedLabel.toLowerCase() === "profile") {
+    return null;
+  }
+
+  const words = normalizedLabel
+    .match(/[\p{L}\p{N}]+/gu)
+    ?.filter((word) => /\p{L}/u.test(word));
+
+  if (!words?.length) {
+    return null;
+  }
+
+  if (words.length === 1) {
+    return words[0]?.slice(0, 1).toLocaleUpperCase() ?? null;
+  }
+
+  return `${words[0]?.[0] ?? ""}${words.at(-1)?.[0] ?? ""}`.toLocaleUpperCase();
+}
 
 export default function Profile({
   children,
@@ -12,109 +36,98 @@ export default function Profile({
   url,
   alt = "profile",
   seed,
+  kind = "person",
 }: PropsWithChildren<{
   size?: string;
   url?: string;
   alt?: string;
-  seed?: number;
+  seed?: AvatarSeed;
+  kind?: ProfileKind;
 }>) {
   const [imageError, setImageError] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
   const imageContainerRef = useRef<HTMLDivElement>(null);
   const { theme } = useTheme();
-  const [backgroundColor, setBackgroundColor] = useState<string | null>(null);
+  const initials = getInitials(alt);
+  const fallbackSeed = seed ?? (initials ? alt : "anonymous");
+  const avatarColors = useMemo(
+    () => getAvatarColors(fallbackSeed, theme),
+    [fallbackSeed, theme]
+  );
 
   const sizeClass =
     {
-      6: "w-6 h-6",
-      7: "w-7 h-7",
-      8: "w-8 h-8",
-      10: "w-10 h-10",
-      11: "w-11 h-11",
-      12: "w-12 h-12",
-    }[size ?? 7] ?? "w-7 h-7";
+      6: "size-6",
+      7: "size-7",
+      8: "size-8",
+      10: "size-10",
+      11: "size-11",
+      12: "size-12",
+    }[size ?? 7] ?? "size-7";
 
-  // Reset states when URL changes and check if image is already cached
   useEffect(() => {
-    if (url && url.length > 0) {
+    if (!url) {
       setImageError(false);
       setImageLoaded(false);
+      return;
+    }
 
-      // Check if image is already loaded (from cache)
-      // Navigate through Next.js Image component structure to find the underlying img element
-      const imgElement = imageContainerRef.current?.querySelector(
-        "img"
-      ) as HTMLImageElement | null;
-      if (imgElement && imgElement.complete) {
-        setImageLoaded(true);
-      }
-    } else {
-      setImageLoaded(false);
+    setImageError(false);
+    setImageLoaded(false);
+
+    const imageElement = imageContainerRef.current?.querySelector("img");
+    if (imageElement?.complete) {
+      setImageLoaded(true);
     }
   }, [url]);
 
-  // Generate background color when theme or seed changes
-  useEffect(() => {
-    if (seed !== undefined && seed !== null) {
-      const color = generateAvatarColor(seed, theme);
-      setBackgroundColor(color);
-    } else {
-      setBackgroundColor(null);
+  const renderFallback = () => {
+    if (kind === "group") {
+      return (
+        <div className="flex size-full items-center justify-center bg-[rgb(var(--accent-primary)/0.14)] text-[rgb(var(--accent-primary))]">
+          <UsersThreeIcon className="size-[58%]" weight="fill" />
+        </div>
+      );
     }
-  }, [seed, theme]);
-
-  const renderDefaultAvatar = () => {
-    // Use colored background if seed is provided
-    const bgStyle = backgroundColor ? { backgroundColor } : undefined;
-    const bgClass = backgroundColor ? "" : "bg-[rgb(var(--text-secondary))]";
 
     return (
       <div
-        className={`w-full h-full ${bgClass} overflow-hidden flex justify-center items-center`}
-        style={bgStyle}
+        className="flex size-full items-center justify-center"
+        style={{ backgroundColor: avatarColors.background }}
       >
-        <UserIcon
-          className={`text-[rgb(var(--bg-primary))] size-8`}
-          weight="fill"
-        />
+        {initials ? (
+          <span
+            className="text-[0.68em] font-semibold leading-none"
+            style={{ color: avatarColors.foreground }}
+          >
+            {initials}
+          </span>
+        ) : (
+          <UserIcon
+            className="size-[54%]"
+            style={{ color: avatarColors.foreground }}
+            weight="fill"
+          />
+        )}
       </div>
     );
   };
 
-  const renderLoadingSkeleton = () => (
-    <div className="w-full h-full bg-[rgb(var(--text-secondary)/0.3)] overflow-hidden flex justify-center items-center animate-pulse">
-      <UserIcon
-        className={`text-[rgb(var(--bg-primary)/0.5)] size-8`}
-        weight="fill"
-      />
-    </div>
-  );
-
   const renderAvatar = () => {
-    // No URL provided - show default avatar
-    if (!url || url.length === 0) {
-      return renderDefaultAvatar();
+    if (!url || imageError) {
+      return renderFallback();
     }
-
-    // Image failed to load - show default avatar
-    if (imageError) {
-      return renderDefaultAvatar();
-    }
-
-    // Image is loading (not cached, not loaded yet)
-    const isLoading = !imageLoaded;
 
     return (
-      <div ref={imageContainerRef} className="w-full h-full relative">
-        {/* Show loading skeleton while image loads */}
-        {isLoading && renderLoadingSkeleton()}
-
-        {/* Next.js Image component with proper error handling */}
+      <div ref={imageContainerRef} className="relative size-full">
+        {!imageLoaded && (
+          <div className="absolute inset-0 animate-pulse bg-[rgb(var(--bg-tertiary))]" />
+        )}
         <Image
           src={url}
           alt={alt}
           fill
-          className={`object-cover transition-opacity duration-300 ${
+          className={`object-cover object-center transition-opacity duration-150 ${
             imageLoaded ? "opacity-100" : "opacity-0"
           }`}
           unoptimized={true}
@@ -129,10 +142,10 @@ export default function Profile({
   };
 
   return (
-    <section
-      className={`${sizeClass} overflow-hidden relative flex justify-center items-center rounded-full cursor-pointer`}
+    <span
+      className={`${sizeClass} inline-flex shrink-0 overflow-hidden rounded-full border border-[rgb(var(--border-primary)/0.52)] bg-[rgb(var(--bg-tertiary))]`}
     >
       {children ?? renderAvatar()}
-    </section>
+    </span>
   );
 }

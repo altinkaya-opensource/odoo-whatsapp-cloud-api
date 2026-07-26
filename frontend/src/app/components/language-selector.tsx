@@ -11,16 +11,16 @@ export default function LanguageSelector() {
   const { locale, setLocale, t } = useTranslations();
 
   return (
-    <div className="flex flex-col items-center gap-2">
+    <div className="flex flex-col items-start gap-2">
       <label
-        className="text-sm text-[rgb(var(--text-secondary)/var(--text-secondary-opacity))]"
+        className="text-sm font-semibold text-[rgb(var(--text-primary))]"
         htmlFor="language-selector"
       >
         {t("navigation.language")}
       </label>
       <select
         id="language-selector"
-        className="bg-[rgb(var(--bg-input)/var(--bg-input-opacity))] text-[rgb(var(--text-primary))] text-sm rounded-lg px-3 py-2 border border-[rgb(var(--border-primary)/var(--border-primary-opacity))] focus:outline-none focus:ring-2 focus:ring-[rgb(var(--accent-primary))]"
+        className="control-field w-full px-3 py-2.5 text-sm"
         value={locale}
         onChange={(event) =>
           setLocale(

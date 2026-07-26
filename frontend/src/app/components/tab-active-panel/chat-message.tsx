@@ -9,7 +9,7 @@ import { useTranslations } from "@/app/context/translation-provider";
 import AttachmentDisplay from "../message/attachment";
 import FormattedText from "../message/formatted-text";
 
-const getRandomContactColor = (): string => {
+const getContactColor = (value: string): string => {
   const colors = [
     "text-[rgb(var(--status-error))]",
     "text-[rgb(var(--status-info))]",
@@ -17,10 +17,11 @@ const getRandomContactColor = (): string => {
     "text-[rgb(var(--status-success))]",
     "text-[rgb(var(--status-warning))]",
   ];
-  const max = Math.floor(colors.length - 1);
-  const min = Math.ceil(0);
-  const random = Math.floor(Math.random() * (max - min + 1)) + min;
-  return colors[random];
+  const hash = Array.from(value).reduce(
+    (total, character) => total + character.charCodeAt(0),
+    0
+  );
+  return colors[hash % colors.length];
 };
 
 type ChatMessageProps = {
@@ -68,7 +69,7 @@ export default function ChatMessage({
       ? t("common.you")
       : (getContact(message.replyTo.contactId)?.displayName ?? t("common.you"));
     return (
-      <div className="bg-[rgb(var(--bg-reply-preview)/var(--bg-reply-preview-opacity))] border-l-2 border-[rgb(var(--accent-primary))] px-2 py-1 rounded text-[rgb(var(--text-secondary)/var(--text-tertiary-opacity))] text-xs w-full max-w-xs mb-1">
+      <div className="mb-1 w-full max-w-xs rounded-xl border-l-[3px] border-[rgb(var(--accent-primary))] bg-[rgb(var(--bg-reply-preview)/var(--bg-reply-preview-opacity))] px-2.5 py-2 text-xs text-[rgb(var(--text-secondary))]">
         <p className="font-semibold truncate">{name}</p>
         <p className="line-clamp-2 break-words">{message.replyTo.message}</p>
       </div>
@@ -80,18 +81,22 @@ export default function ChatMessage({
     // Use contact ID as seed for incoming messages
     const contactSeed = contact?.id ? parseInt(contact.id, 10) : undefined;
     return (
-      <div className="flex flex-col gap-1">
-        <div className="flex items-start gap-2 w-max">
+      <div className="flex flex-col gap-1.5">
+        <div className="flex max-w-full items-start gap-2">
           {!message.isSentFromUser && (
             <Profile
               url={contact?.contactAvatar}
-              alt={contact?.displayName}
+              alt={contact?.displayName ?? message.contactId}
               seed={contactSeed}
             />
           )}
-          <div className="group rounded-lg overflow-hidden bg-[rgb(var(--bg-primary))] z-20 relative">
+          <div
+            className={`message-bubble message-bubble--${
+              message.isSentFromUser ? "outgoing" : "incoming"
+            } group relative z-20 max-w-[min(32rem,calc(100vw-8rem))] overflow-hidden rounded-2xl border border-[rgb(var(--border-primary)/var(--border-primary-opacity))] shadow-sm`}
+          >
             <div
-              className={`flex flex-col justify-center items-start px-2 p-1.5 gap-1 ${
+              className={`flex flex-col items-start justify-center gap-2 p-3 ${
                 message.isSentFromUser
                   ? "bg-[rgb(var(--bg-chat-outgoing))]"
                   : "bg-[rgb(var(--bg-chat-incoming)/var(--bg-chat-incoming-opacity))]"
@@ -99,7 +104,9 @@ export default function ChatMessage({
             >
               {!message.isSentFromUser && (
                 <p
-                  className={`text-xs font-semibold ${getRandomContactColor()}`}
+                  className={`text-xs font-semibold ${getContactColor(
+                    contact?.id ?? message.contactId
+                  )}`}
                 >
                   {contact?.displayName ?? message.contactId}
                 </p>
@@ -116,7 +123,7 @@ export default function ChatMessage({
               {shouldShowMessageText && (
                 <div className="flex flex-col gap-1">
                   <div className="flex items-center gap-2">
-                    <p className="text-[rgb(var(--text-primary))] text-sm max-w-xs break-words">
+                    <p className="max-w-xs break-words text-sm leading-6 text-[rgb(var(--text-primary))]">
                       <FormattedText text={displayText} />
                     </p>
                     <div className="flex items-center gap-1 flex-shrink-0">
@@ -148,7 +155,11 @@ export default function ChatMessage({
             </div>
           </div>
           {message.isSentFromUser && (
-            <Profile url={outgoingAvatar ?? undefined} seed={senderUser?.id} />
+            <Profile
+              url={outgoingAvatar ?? undefined}
+              alt={senderUser?.name ?? t("common.you")}
+              seed={senderUser?.id}
+            />
           )}
         </div>
         {message.error && (
@@ -165,15 +176,19 @@ export default function ChatMessage({
   }
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1.5">
       <div
         className={`flex ${
           message.isSentFromUser ? "justify-end" : "justify-start"
         } items-start gap-2`}
       >
-        <div className="group rounded-lg bg-[rgb(var(--bg-primary))] z-10 overflow-hidden w-max relative">
+        <div
+          className={`message-bubble message-bubble--${
+            message.isSentFromUser ? "outgoing" : "incoming"
+          } group relative z-10 max-w-[min(32rem,calc(100vw-5rem))] overflow-hidden rounded-2xl border border-[rgb(var(--border-primary)/var(--border-primary-opacity))] shadow-sm`}
+        >
           <div
-            className={`flex flex-col justify-between items-start px-2 p-1.5 gap-2 ${
+            className={`flex flex-col items-start justify-between gap-2 p-3 ${
               message.isSentFromUser
                 ? "bg-[rgb(var(--bg-chat-outgoing))]"
                 : "bg-[rgb(var(--bg-chat-incoming)/var(--bg-chat-incoming-opacity))]"
@@ -191,7 +206,7 @@ export default function ChatMessage({
             {shouldShowMessageText && (
               <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-2">
-                  <p className="text-[rgb(var(--text-primary))] text-sm max-w-xs break-words">
+                  <p className="max-w-xs break-words text-sm leading-6 text-[rgb(var(--text-primary))]">
                     <FormattedText text={displayText} />
                   </p>
                   <div className="flex items-center gap-1 flex-shrink-0">
@@ -223,7 +238,11 @@ export default function ChatMessage({
           </div>
         </div>
         {message.isSentFromUser && (
-          <Profile url={outgoingAvatar ?? undefined} seed={senderUser?.id} />
+          <Profile
+            url={outgoingAvatar ?? undefined}
+            alt={senderUser?.name ?? t("common.you")}
+            seed={senderUser?.id}
+          />
         )}
       </div>
       {message.error && (
