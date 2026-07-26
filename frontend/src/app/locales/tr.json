@@ -26,7 +26,7 @@
     "totpBack": "Farklı bir hesap kullan",
     "totpInvalid": "Doğrulama kodu geçersiz. Tekrar deneyin.",
     "totpExpired": "Doğrulama oturumunuz sona erdi. Tekrar giriş yapın.",
-    "totpUnavailable": "Doğrulama şu anda kullanılamıyor. Tekrar deneyin.",
+    "totpUnavailable": "Kod şu anda doğrulanamıyor. Tekrar deneyin.",
     "ssoLoggingIn": "Odoo'dan giriş yapılıyor...",
     "ssoError": "SSO giriş hatası",
     "workspaceEyebrow": "Odoo + WhatsApp",
@@ -222,7 +222,7 @@
   "connection": {
     "disconnected": {
       "title": "Bağlantı Kesildi",
-      "message": "Sunucuya bağlanılamıyor. Lütfen internet bağlantınızı kontrol edin."
+      "message": "Sunucuya ulaşılamıyor. İnternet bağlantınızı kontrol edin."
     },
     "sessionExpired": {
       "title": "Oturum Süresi Doldu",
@@ -236,7 +236,7 @@
     "blocked": {
       "title": "WhatsApp başka bir sekmede aktif",
       "message": "WhatsApp'ı bu sekmede kullanmak için diğer sekmeyi kapatın veya bu sayfayı yenileyin.",
-      "footer": "Diğer sekme kapatılırsa bu sekme otomatik olarak aktif hale gelecektir."
+      "footer": "Diğer sekme kapandığında bu sekme devreye girer."
     }
   }
 }

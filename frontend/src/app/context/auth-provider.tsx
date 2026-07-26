@@ -126,7 +126,7 @@ export default function AuthProvider({ children }: PropsWithChildren) {
       setStatus("authenticated");
 
       // Revalidate session in background to refresh server-side cache
-      // This ensures session cache is populated after server restart or frontend deployment
+      // Repopulates the server-side session cache after a restart or deploy
       loginWithSessionId(storedSession).catch(() => {
         // Session validation failed - user will be logged out
         console.log("[Auth] Session revalidation failed on mount");

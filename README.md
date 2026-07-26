@@ -1,17 +1,15 @@
 # Odoo WhatsApp Cloud API
 
-An integration between WhatsApp Cloud API and Odoo ERP system with a modern Next.js frontend for managing conversations.
+WhatsApp Business Cloud API inside Odoo, with a Next.js chat interface for the people answering messages.
 
-## What is this project?
+You can:
 
-This project provides a complete solution for integrating WhatsApp Business Cloud API with Odoo. It allows businesses to:
-
-- Send and receive WhatsApp messages directly from Odoo
-- Manage WhatsApp conversations through a dedicated web interface
-- Link WhatsApp threads with Odoo partners
-- Handle message attachments (images, videos, documents, audio)
-- Track message status (sent, delivered, read)
-- Reply to messages with threading support
+- Send and receive WhatsApp messages from Odoo
+- Answer conversations in a dedicated web interface
+- Link WhatsApp threads to Odoo partners
+- Send and receive images, videos, documents and audio
+- See sent, delivered and read status
+- Reply to a specific message
 
 ## Project Structure
 

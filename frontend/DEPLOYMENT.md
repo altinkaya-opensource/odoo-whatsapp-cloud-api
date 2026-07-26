@@ -1,6 +1,6 @@
-# Frontend Production Deployment Guide
+# Frontend Production Deployment
 
-This guide explains how to deploy the Odoo WhatsApp Cloud API frontend using Docker.
+Deploying the Odoo WhatsApp Cloud API frontend with Docker.
 
 ## Prerequisites
 
@@ -131,8 +131,8 @@ docker rm odoo-whatsapp-frontend
 docker rmi odoo-whatsapp-frontend
 
 # Rebuild without cache
-docker-compose build --no-cache
-docker-compose up -d
+docker compose build --no-cache
+docker compose up -d
 ```
 
 ## Updating the Application
@@ -144,19 +144,28 @@ When you have new code changes:
 git pull
 
 # Rebuild and restart
-docker-compose down
-docker-compose build --no-cache
-docker-compose up -d
+docker compose down
+docker compose build --no-cache
+docker compose up -d
 ```
 
 ## Environment Variables
 
-| Variable                | Description                  | Example            |
-| ----------------------- | ---------------------------- | ------------------ |
-| `ODOO_JSONRPC_PROTOCOL` | Protocol for Odoo connection | `https` or `http`  |
-| `ODOO_JSONRPC_HOST`     | Odoo server hostname/IP      | `odoo.example.com` |
-| `ODOO_JSONRPC_PORT`     | Odoo server port             | `443`, `8069`      |
-| `ODOO_JSONRPC_DATABASE` | Odoo database name           | `production_db`    |
+| Variable                 | Description                                          | Example                     |
+| ------------------------ | ---------------------------------------------------- | --------------------------- |
+| `ODOO_JSONRPC_PROTOCOL`  | Protocol for Odoo connection                         | `https` or `http`           |
+| `ODOO_JSONRPC_HOST`      | Odoo server hostname/IP                              | `odoo.example.com`          |
+| `ODOO_JSONRPC_PORT`      | Odoo server port                                     | `443`, `8069`               |
+| `ODOO_JSONRPC_DATABASE`  | Odoo database name                                   | `production_db`             |
+| `ODOO_WEBHOOK_SECRET`    | Signs webhooks from Odoo; must match the backend     | `openssl rand -hex 32`      |
+| `AI_CHAT_ENABLED`        | Turns the AI reply helpers on                        | `false`                     |
+| `OPENAI_BASE_URL`        | OpenAI-compatible endpoint, when AI is on            | `https://api.openai.com/v1` |
+| `OPENAI_API_KEY`         | Key for that endpoint                                |                             |
+| `OPENAI_MODEL`           | Model name, defaults to `openai/gpt-4o`              |                             |
+| `RAG_SUPPORTED_CHAT_URL` | RAG service for suggested replies; empty disables it |                             |
+
+Without `ODOO_WEBHOOK_SECRET` the webhook endpoint returns 500 and no message
+reaches the browser in real time.
 
 ## Health Check
 
@@ -194,61 +203,19 @@ docker exec odoo-whatsapp-frontend env | grep ODOO
 ```bash
 # Clean Docker cache and rebuild
 docker system prune -a
-docker-compose build --no-cache
+docker compose build --no-cache
 ```
 
-## Security Considerations
+## Security
 
-1. **Never commit `.env.production`** - It contains sensitive credentials
-2. **Use HTTPS** in production with a reverse proxy
-3. **Restrict Docker network** access if needed
-4. **Keep Docker images updated** regularly
-5. **Use secrets management** for sensitive data in production
-
-## Performance Optimization
-
-1. **Enable compression** in your reverse proxy
-2. **Use CDN** for static assets if needed
-3. **Monitor container resources**:
-   ```bash
-   docker stats odoo-whatsapp-frontend
-   ```
-4. **Set resource limits** in docker-compose.yml:
-   ```yaml
-   deploy:
-     resources:
-       limits:
-         cpus: "1.0"
-         memory: 512M
-   ```
-
-## Monitoring
-
-Monitor your container with:
-
-```bash
-# Resource usage
-docker stats odoo-whatsapp-frontend
-
-# Health status
-docker inspect odoo-whatsapp-frontend | jq '.[0].State.Health'
-
-# Application logs
-docker logs --tail 100 -f odoo-whatsapp-frontend
-```
+- Keep `.env.production` out of version control; it holds the Odoo credentials
+  and the webhook secret.
+- Terminate TLS at the reverse proxy. Session ids travel in request headers and
+  in the SSE query string.
+- Generate a fresh `ODOO_WEBHOOK_SECRET` per environment and set the same value
+  on the WhatsApp backend record in Odoo.
 
 ## Backup
 
-Important files to backup:
-
-- `.env.production` (store securely, not in version control)
-- Custom configuration files
-
-## Support
-
-For issues:
-
-1. Check logs: `docker logs odoo-whatsapp-frontend`
-2. Verify environment configuration
-3. Test Odoo connectivity
-4. Review application logs in the container
+Back up `.env.production` somewhere outside version control. Everything else
+lives in the image.

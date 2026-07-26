@@ -70,10 +70,10 @@ export type Chat = {
   partnerId?: number | null; // Partner ID for opening in Odoo
   partnerName?: string | null; // Partner display name from Odoo
   partnerAvatar?: string | null; // Partner avatar URL from Odoo
-  hasAvatar?: boolean; // NEW: Whether partner has an actual avatar image
+  hasAvatar?: boolean; // Partner has a real avatar, not a generated one
   lastMessagePreview?: string;
   lastMessageAt?: number | null;
-  unreadCount?: number; // NEW: Unread message count from backend
+  unreadCount?: number;
   read: boolean;
   group: boolean;
   favorite: boolean;
@@ -210,8 +210,8 @@ export default function ChatsProvider({
         backend_id: number | null;
         partner_id?: [number, string] | number | null | false;
         write_date: string;
-        unread_count?: number; // NEW: Unread count from backend
-        has_avatar?: boolean; // NEW: Whether partner has an actual avatar image
+        unread_count?: number;
+        has_avatar?: boolean;
       }>;
 
       setChats((prev) => {
@@ -271,9 +271,9 @@ export default function ChatsProvider({
                 partnerAvatar !== null
                   ? partnerAvatar
                   : existingChat.partnerAvatar,
-              hasAvatar: hasAvatar, // Update avatar availability flag
-              unreadCount: newUnreadCount, // Update unread count
-              read: !hasUnread, // Mark as read if no unread messages
+              hasAvatar,
+              unreadCount: newUnreadCount,
+              read: !hasUnread,
             });
           } else {
             // Add new chat
@@ -311,13 +311,13 @@ export default function ChatsProvider({
               partnerId,
               partnerName,
               partnerAvatar,
-              hasAvatar, // Include avatar availability flag
+              hasAvatar,
               lastMessagePreview: thread.last_message_preview || "",
               lastMessageAt: newTimestamp,
-              unreadCount: newUnreadCount, // Set unread count
+              unreadCount: newUnreadCount,
               groupName: undefined,
               groupAvatar: undefined,
-              read: newUnreadCount === 0, // Mark as read if no unread messages
+              read: newUnreadCount === 0,
               favorite: false,
               group: false,
               messages: [],
@@ -431,11 +431,9 @@ export default function ChatsProvider({
   const { isConnected: sseConnected } = useSSE(
     {
       onThreadsUpdate: handleThreadsUpdate,
-      onMessagesUpdate: handleMessageArrival, // Optimistic unread count updates
-      // STRATEGY: Optimistic updates + polling sync
-      // - message.created webhooks → immediate optimistic unread count increment
-      // - thread.updated webhooks + polling → backend ground truth (via Math.max)
-      // - Polling every 10 min corrects any drift between frontend and backend
+      // message.created bumps the unread count as it arrives; the 10-minute
+      // poll and /api/threads/unread-count correct any drift.
+      onMessagesUpdate: handleMessageArrival,
       onError: (error) => {
         reportApiError(error);
       },
@@ -449,8 +447,7 @@ export default function ChatsProvider({
     }
   );
 
-  // Initialize periodic thread list polling as a fallback mechanism
-  // This ensures unopened threads receive updates even if SSE fails
+  // Polling fallback: covers threads the user never opened when SSE drops
   useThreadsPoller(
     {
       onThreadsFound: (threads) => {
@@ -657,8 +654,8 @@ export default function ChatsProvider({
     phone_number?: string | null;
     backend_id?: [number, string] | number | null | false;
     partner_id?: [number, string] | number | null | false;
-    unread_count?: number; // NEW: Unread count from backend
-    has_avatar?: boolean; // NEW: Whether partner has an actual avatar image
+    unread_count?: number;
+    has_avatar?: boolean;
   };
 
   const transformThreads = useCallback(
@@ -721,11 +718,11 @@ export default function ChatsProvider({
           partnerId,
           partnerName,
           partnerAvatar,
-          hasAvatar, // Include avatar availability flag
+          hasAvatar,
           lastMessagePreview: preview,
           lastMessageAt: timestamp,
-          unreadCount, // Include unread count
-          read: unreadCount === 0, // Mark as read if no unread messages
+          unreadCount,
+          read: unreadCount === 0,
           group: false,
           favorite: false,
           messages,

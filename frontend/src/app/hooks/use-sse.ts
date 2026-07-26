@@ -84,8 +84,7 @@ export const useSSE = (callbacks: SSECallbacks, options: SSEOptions = {}) => {
         url.searchParams.set("threadId", threadId);
       }
 
-      // Create EventSource with custom headers (Note: EventSource doesn't support custom headers directly)
-      // We'll use a workaround by passing sessionId as a query parameter for now
+      // EventSource cannot set headers, so the session goes in the query
       url.searchParams.set("sessionId", sessionId);
 
       console.log(

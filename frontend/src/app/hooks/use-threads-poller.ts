@@ -15,7 +15,7 @@ export type ThreadsPollerOptions = {
 /**
  * Hook for periodic thread list polling via REST API
  *
- * This ensures unopened threads receive updates even if SSE fails:
+ * Covers threads the user never opened, when SSE drops:
  * 1. Thread list stays fresh for all conversations
  * 2. Unread counts update for unopened threads
  * 3. Works as fallback when no specific thread is open

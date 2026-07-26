@@ -7,7 +7,7 @@ const ensureEnv = () => {
 };
 
 type SSEUpdate = {
-  type: "threads" | "messages" | "heartbeat" | "sync_required";
+  type: "threads" | "messages" | "heartbeat";
   data?: {
     threads?: unknown[];
     messages?: unknown[];
@@ -18,7 +18,7 @@ type SSEUpdate = {
 
 const HEARTBEAT_INTERVAL_MS = 30000; // 30 seconds
 
-// Simple rate limiting - in production use Redis or proper rate limiting
+// Per-session connection count. Redis if this ever runs on more than one node.
 const activeConnections = new Map<string, number>();
 
 export async function GET(request: NextRequest) {
@@ -86,7 +86,6 @@ export async function GET(request: NextRequest) {
     `[SSE] Connection authorized for backends: [${allowedBackendIds.join(", ")}]`
   );
 
-  // Simple connection limiting
   const connectionKey = `${sessionId}-${threadId || "global"}`;
   const currentConnections = activeConnections.get(connectionKey) || 0;
 
@@ -178,13 +177,8 @@ export async function GET(request: NextRequest) {
           sendSSEMessage({ type: "heartbeat", timestamp: now });
           lastHeartbeat = now;
 
-          // Touch session cache to prevent expiration while user is connected
-          // This keeps the session alive as long as SSE connection is active
+          // Keep the session alive for as long as the tab holds the stream
           sessionCache.touch(sessionId);
-
-          // Note: Drift detection removed to eliminate Odoo RPC dependency
-          // Webhooks are the primary sync mechanism; clients should handle
-          // sync_required events if webhooks fail
         }
       };
 
