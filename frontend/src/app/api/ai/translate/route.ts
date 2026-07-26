@@ -21,6 +21,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const auth = await requireSession(request);
+    if ("response" in auth) {
+      return auth.response;
+    }
+
     // Parse request body
     const body: TranslateRequest = await request.json();
     const { messages, currentText } = body;

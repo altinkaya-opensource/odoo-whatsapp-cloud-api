@@ -15,7 +15,9 @@ export interface OdooAuthenticateParams {
 }
 
 export interface OdooLoginResult {
-  uid?: number;
+  // Odoo returns `uid: null` after a correct password when TOTP must still
+  // be completed on the same partial session.
+  uid?: number | null;
   session_id?: string;
   user_context?: Record<string, unknown>;
   [key: string]: unknown;
@@ -86,13 +88,28 @@ const parseSessionId = (cookies?: string[]) => {
   if (!cookies || cookies.length === 0) {
     return null;
   }
-  const sessionCookie = cookies.find((cookie) =>
-    cookie.trim().startsWith("session_id=")
-  );
+  const sessionCookie = [...cookies]
+    .reverse()
+    .find((cookie) => cookie.trim().startsWith("session_id="));
   if (!sessionCookie) {
     return null;
   }
   return sessionCookie.split(";")[0].split("=")[1];
+};
+
+const parseJsonRpcResponse = <T>(data: JsonRpcResponse<T>): T => {
+  if (data.error) {
+    const err = new Error(data.error.message);
+    (err as Error & { code?: number; data?: unknown }).code = data.error.code;
+    (err as Error & { code?: number; data?: unknown }).data = data.error.data;
+    throw err;
+  }
+
+  if (typeof data.result === "undefined") {
+    throw new Error("Unexpected JSON-RPC response: missing result value");
+  }
+
+  return data.result;
 };
 
 const assertHost = (host?: string): host is string => {
@@ -137,14 +154,6 @@ export class OdooClient {
 
     const data = await response.json();
 
-    if (data.error) {
-      const rpcError = data.error;
-      const err = new Error(rpcError.message);
-      (err as Error & { code?: number; data?: unknown }).code = rpcError.code;
-      (err as Error & { code?: number; data?: unknown }).data = rpcError.data;
-      throw err;
-    }
-
     const cookies = extractCookies(response);
     const sessionId = parseSessionId(cookies);
 
@@ -152,7 +161,7 @@ export class OdooClient {
       throw new Error("Unable to determine Odoo session id from response");
     }
 
-    const loginResult = data.result ?? {};
+    const loginResult = parseJsonRpcResponse<OdooLoginResult>(data);
 
     const sessionClient = new OdooSessionClient({
       baseURL: this.baseURL,
@@ -174,6 +183,50 @@ export class OdooClient {
       sessionId,
       userContext,
     });
+  }
+
+  async verifyTotp(sessionId: string, totpToken: string) {
+    const response = await fetch(`${this.baseURL}/web/session/totp`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Cookie: `session_id=${sessionId};`,
+      },
+      body: JSON.stringify({
+        jsonrpc: JSON_RPC_VERSION,
+        method: "call",
+        params: {
+          totp_token: totpToken,
+        },
+        id: 1,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `Unexpected HTTP status from Odoo: ${response.status} ${response.statusText}`
+      );
+    }
+
+    const data = (await response.json()) as JsonRpcResponse<OdooLoginResult>;
+    const result = parseJsonRpcResponse(data);
+    const finalSessionId = parseSessionId(extractCookies(response));
+    if (!finalSessionId) {
+      throw new Error(
+        "Unable to determine finalized Odoo session id from response"
+      );
+    }
+    const session = this.createSession(
+      finalSessionId,
+      (result.user_context ?? {}) as Record<string, unknown>
+    );
+
+    return {
+      session,
+      sessionId: finalSessionId,
+      result,
+    };
   }
 
   private post(path: string, body: unknown): Promise<Response> {
@@ -369,6 +422,11 @@ export class OdooSessionClient {
     return this.request<T>(body, "/web/dataset/call_button");
   }
 
+  /** Call a `type="json"` Odoo controller directly. */
+  async callController<T>(path: string, params: Record<string, unknown> = {}) {
+    return this.request<T>(params, path);
+  }
+
   private async request<T>(
     params: Record<string, unknown>,
     path = "/web/dataset/call_kw"
@@ -396,21 +454,6 @@ export class OdooSessionClient {
     }
 
     const data = (await response.json()) as JsonRpcResponse<T>;
-    return this.parseResponse(data);
-  }
-
-  private parseResponse<T>(data: JsonRpcResponse<T>): T {
-    if (data.error) {
-      const err = new Error(data.error.message);
-      (err as Error & { code?: number; data?: unknown }).code = data.error.code;
-      (err as Error & { code?: number; data?: unknown }).data = data.error.data;
-      throw err;
-    }
-
-    if (typeof data.result === "undefined") {
-      throw new Error("Unexpected JSON-RPC response: missing result value");
-    }
-
-    return data.result;
+    return parseJsonRpcResponse(data);
   }
 }

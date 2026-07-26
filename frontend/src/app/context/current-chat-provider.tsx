@@ -14,6 +14,7 @@ import { useAuth } from "../hooks/use-auth";
 import { useSSE } from "../hooks/use-sse";
 import { useMessagePoller } from "../hooks/use-message-poller";
 import { useConnection } from "./connection-provider";
+import { markMessagesAsSeen, setActiveThread } from "../lib/notifications";
 
 // Message pagination configuration
 const MESSAGE_BATCH_SIZE = 100;
@@ -110,108 +111,6 @@ const extractDigits = (value?: string | null) => {
   return digits.length >= 6 ? digits : null;
 };
 
-export const buildMessageNotificationKey = (message: Message) =>
-  message.id ?? `${message.contactId}-${message.timestamp}-${message.message}`;
-
-export const findUnnotifiedIncomingMessages = (
-  messages: Message[],
-  notified: Set<string>
-) => {
-  const next = new Set(notified);
-  const incoming: Message[] = [];
-
-  messages.forEach((message) => {
-    const key = buildMessageNotificationKey(message);
-    if (!next.has(key)) {
-      next.add(key);
-      if (!message.isSentFromUser) {
-        incoming.push(message);
-      }
-    }
-  });
-
-  return { incoming, next };
-};
-
-export const shouldPlayNotificationAudio = (
-  visibility: DocumentVisibilityState | undefined
-) => visibility !== "visible";
-
-// Constants for localStorage persistence
-const NOTIFIED_MESSAGES_KEY = "whatsapp.notificationState.messages";
-const MESSAGE_NOTIFICATION_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
-const NOTIFICATION_PERMISSION_KEY = "whatsapp.notificationPermission.dismissed";
-
-// Helper to load notified messages from localStorage
-function loadNotifiedMessages(): Set<string> {
-  if (typeof window === "undefined") return new Set();
-
-  try {
-    const stored = localStorage.getItem(NOTIFIED_MESSAGES_KEY);
-    if (!stored) return new Set();
-
-    const parsed: { [key: string]: number } = JSON.parse(stored);
-    const now = Date.now();
-
-    // Filter out expired entries (older than TTL)
-    const validKeys = Object.entries(parsed)
-      .filter(([, timestamp]) => now - timestamp < MESSAGE_NOTIFICATION_TTL)
-      .map(([key]) => key);
-
-    return new Set(validKeys);
-  } catch (error) {
-    console.error(
-      "[Notifications] Failed to restore notified messages from localStorage:",
-      error
-    );
-    return new Set();
-  }
-}
-
-// Helper to save notified messages to localStorage (debounced)
-let saveMessagesTimeout: NodeJS.Timeout | null = null;
-function saveNotifiedMessages(messages: Set<string>) {
-  if (typeof window === "undefined") return;
-
-  // Debounce saves to avoid excessive localStorage writes
-  if (saveMessagesTimeout) clearTimeout(saveMessagesTimeout);
-
-  saveMessagesTimeout = setTimeout(() => {
-    try {
-      const now = Date.now();
-      // Store message keys with current timestamp
-      const messageObj: { [key: string]: number } = {};
-      messages.forEach((key) => {
-        messageObj[key] = now;
-      });
-
-      localStorage.setItem(NOTIFIED_MESSAGES_KEY, JSON.stringify(messageObj));
-    } catch (error) {
-      console.error(
-        "[Notifications] Failed to save notified messages to localStorage:",
-        error
-      );
-    }
-  }, 1000); // Debounce for 1 second
-}
-
-// Helper to check if permission was previously dismissed
-function wasPermissionDismissed(): boolean {
-  if (typeof window === "undefined") return false;
-  return localStorage.getItem(NOTIFICATION_PERMISSION_KEY) === "true";
-}
-
-// Helper to mark permission as dismissed
-function markPermissionDismissed() {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(NOTIFICATION_PERMISSION_KEY, "true");
-}
-
-// Global notification tracker - persists across thread switches
-const globalNotifiedMessagesRef: { current: Set<string> } = {
-  current: new Set(),
-};
-
 export default function CurrentChatProvider({ children }: PropsWithChildren) {
   const [currentChat, setCurrentChat] = useState<CurrentChatData>({
     chatId: null,
@@ -237,8 +136,6 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
   const latestMessageIdRef = useRef<number | null>(null);
   const oldestMessageIdRef = useRef<number | null>(null);
   const targetMessageIdRef = useRef<number | null>(null);
-  const notificationAudioRef = useRef<HTMLAudioElement | null>(null);
-  const initialNotificationRef = useRef(true);
 
   const {
     chats: { complete },
@@ -542,32 +439,6 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
       });
     }
   }, [currentChat.messages, sessionId, markChatAsRead]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    notificationAudioRef.current = new Audio("/notification.mp3");
-
-    // Restore notified messages from localStorage
-    const restoredMessages = loadNotifiedMessages();
-    globalNotifiedMessagesRef.current = restoredMessages;
-
-    // Only request permission if not previously dismissed
-    if (
-      "Notification" in window &&
-      Notification.permission === "default" &&
-      !wasPermissionDismissed()
-    ) {
-      Notification.requestPermission()
-        .then((permission) => {
-          if (permission === "denied") {
-            markPermissionDismissed();
-          }
-        })
-        .catch(() => undefined);
-    }
-  }, []);
 
   const fetchMessages = useCallback(
     async ({
@@ -893,8 +764,6 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
       latestMessageTimestampRef.current = null;
       latestMessageIdRef.current = null;
       oldestMessageIdRef.current = null;
-      // Don't clear global notification tracker - it persists across thread switches
-      initialNotificationRef.current = true;
       return;
     }
 
@@ -998,10 +867,6 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
 
     latestMessageIdRef.current = null;
     oldestMessageIdRef.current = null;
-    // Don't clear global notification tracker - it persists across thread switches
-    // This prevents Bug 1: playing notification sound when switching threads
-    initialNotificationRef.current = true;
-
     // Mark thread as read when opening it
     if (chat.chatId && sessionId) {
       fetch("/api/threads/mark-read", {
@@ -1550,81 +1415,25 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
     }));
   }, []);
 
+  // Track which thread is on screen so notifications stay quiet for it, and
+  // treat everything already rendered as seen. Alerting is owned by
+  // ChatsProvider, which sees messages from every thread.
   useEffect(() => {
-    const activeChatId = currentChat.chatId;
-    if (!activeChatId) {
+    setActiveThread(currentChat.chatId);
+    return () => setActiveThread(null);
+  }, [currentChat.chatId]);
+
+  useEffect(() => {
+    if (!currentChat.chatId) {
       return;
     }
-
-    // Check initialNotificationRef FIRST, before updating any state
-    // This prevents notifications when opening a thread for the first time
-    if (initialNotificationRef.current) {
-      // Only reset the flag if we actually have messages to process
-      // This prevents premature reset when effect runs with empty messages array
-      if (currentChat.messages.length > 0) {
-        // Still mark messages as seen to prevent future notifications
-        const { next } = findUnnotifiedIncomingMessages(
-          currentChat.messages,
-          globalNotifiedMessagesRef.current
-        );
-        globalNotifiedMessagesRef.current = next;
-        saveNotifiedMessages(globalNotifiedMessagesRef.current);
-
-        // Reset the flag now that we've processed the initial messages
-        initialNotificationRef.current = false;
-      }
-      return;
-    }
-
-    // Use global notification tracker instead of local ref
-    // This prevents Bug 1: playing notification when switching threads
-    const { incoming, next } = findUnnotifiedIncomingMessages(
-      currentChat.messages,
-      globalNotifiedMessagesRef.current
+    markMessagesAsSeen(
+      currentChat.chatId,
+      currentChat.messages
+        .filter((message) => !message.isSentFromUser && message.id)
+        .map((message) => message.id as string)
     );
-    globalNotifiedMessagesRef.current = next;
-
-    if (incoming.length === 0) {
-      return;
-    }
-
-    // Save updated notification state to localStorage
-    saveNotifiedMessages(globalNotifiedMessagesRef.current);
-
-    // Note: Audio notification is now handled by chats-provider at thread level
-    // This prevents double notifications and ensures notifications work for all threads
-    // Browser notifications for active chat are also moving to chats-provider
-    // This code may be removed in the future
-
-    if (typeof window !== "undefined" && "Notification" in window) {
-      if (Notification.permission === "granted") {
-        incoming.forEach((message) => {
-          const contact = contacts.find((c) => c.id === message.contactId);
-          const title =
-            contact?.displayName ?? currentChat.threadName ?? "New message";
-          new Notification(title, {
-            body: message.message,
-          });
-        });
-      } else if (
-        Notification.permission === "default" &&
-        !wasPermissionDismissed()
-      ) {
-        Notification.requestPermission()
-          .then((permission) => {
-            if (permission === "denied") {
-              markPermissionDismissed();
-            }
-          })
-          .catch(() => undefined);
-      }
-    }
-  }, [
-    currentChat.chatId,
-    currentChat.messages,
-    currentChat.threadName,
-    contacts,
-  ]);
+  }, [currentChat.chatId, currentChat.messages]);
 
   return (
     <CurrentChatContext.Provider

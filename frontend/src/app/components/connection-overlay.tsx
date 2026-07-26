@@ -40,8 +40,7 @@ export default function ConnectionOverlay() {
             "Unable to connect to the server. Please check your internet connection.",
           buttonText: t("connection.retry") || "Retry",
           buttonAction: handleRetry,
-          buttonClass:
-            "bg-[rgb(var(--status-info))] hover:bg-[rgb(var(--status-info)/0.8)]",
+          buttonClass: "primary-action",
         };
       case "session-expired":
         return {
@@ -57,8 +56,7 @@ export default function ConnectionOverlay() {
             "Your session has expired. Please log in again.",
           buttonText: t("connection.login") || "Log In",
           buttonAction: handleLogout,
-          buttonClass:
-            "bg-[rgb(var(--accent-primary))] hover:bg-[rgb(var(--accent-primary)/0.8)]",
+          buttonClass: "primary-action",
         };
       default:
         return null;
@@ -69,13 +67,23 @@ export default function ConnectionOverlay() {
   if (!content) return null;
 
   return (
-    <div className="fixed inset-0 bg-[rgb(var(--bg-primary)/0.8)] backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-[rgb(var(--bg-card)/var(--bg-card-opacity))] rounded-2xl border border-[rgb(var(--border-primary)/var(--border-primary-opacity))] shadow-2xl max-w-md w-full p-8 text-center">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgb(var(--bg-overlay)/var(--bg-overlay-opacity))] p-4 backdrop-blur-sm">
+      <div
+        className="surface-card w-full max-w-md rounded-2xl p-8 text-center"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="connection-overlay-title"
+      >
         <div className="flex flex-col items-center gap-6">
-          {content.icon}
+          <div className="flex size-20 items-center justify-center rounded-2xl bg-[rgb(var(--bg-secondary))]">
+            {content.icon}
+          </div>
 
           <div className="space-y-3">
-            <h2 className="text-2xl font-bold text-[rgb(var(--text-primary))]">
+            <h2
+              id="connection-overlay-title"
+              className="text-2xl font-semibold tracking-[-0.025em] text-[rgb(var(--text-primary))]"
+            >
               {content.title}
             </h2>
             <p className="text-[rgb(var(--text-secondary))] leading-relaxed">
@@ -85,7 +93,7 @@ export default function ConnectionOverlay() {
 
           <button
             onClick={content.buttonAction}
-            className={`w-full py-3 px-6 rounded-lg font-semibold text-white transition-colors ${content.buttonClass}`}
+            className={`w-full px-6 py-3 font-semibold ${content.buttonClass}`}
           >
             {content.buttonText}
           </button>

@@ -45,7 +45,7 @@ class EventBroadcaster {
 
     console.log(
       `[EventBroadcaster] Subscribed to channel: ${channel} ` +
-        `(session: ${metadata.sessionId}, backends: [${metadata.allowedBackendIds.join(", ")}], ` +
+        `(backends: [${metadata.allowedBackendIds.join(", ")}], ` +
         `listeners: ${this.getListenerCount(channel)})`
     );
 
@@ -77,36 +77,33 @@ class EventBroadcaster {
   }
 
   /**
-   * Broadcast data to listeners on a channel, filtered by backend access
+   * Broadcast data to the listeners on a channel that may see this backend
    * @param channel - Channel name
    * @param data - Data to broadcast
-   * @param backendId - Optional backend ID for access control filtering
+   * @param backendId - Backend the event belongs to; listeners without
+   *   access to it never receive the event
    */
-  broadcast(channel: string, data: unknown, backendId?: number): void {
+  broadcast(channel: string, data: unknown, backendId: number): void {
     const listeners = this.channels.get(channel);
     if (!listeners || listeners.size === 0) {
       console.log(`[EventBroadcaster] No listeners for channel: ${channel}`);
       return;
     }
 
-    // Filter listeners by backend access if backendId is provided
-    let filteredListeners = Array.from(listeners);
-    if (backendId !== undefined) {
-      filteredListeners = filteredListeners.filter((listener) =>
-        listener.allowedBackendIds.includes(backendId)
-      );
+    const filteredListeners = Array.from(listeners).filter((listener) =>
+      listener.allowedBackendIds.includes(backendId)
+    );
 
-      if (filteredListeners.length === 0) {
-        console.log(
-          `[EventBroadcaster] No authorized listeners for channel: ${channel}, backend: ${backendId}`
-        );
-        return;
-      }
+    if (filteredListeners.length === 0) {
+      console.log(
+        `[EventBroadcaster] No authorized listeners for channel: ${channel}, backend: ${backendId}`
+      );
+      return;
     }
 
     console.log(
       `[EventBroadcaster] Broadcasting to channel: ${channel} ` +
-        `(backend: ${backendId ?? "N/A"}, listeners: ${filteredListeners.length}/${listeners.size})`
+        `(backend: ${backendId}, listeners: ${filteredListeners.length}/${listeners.size})`
     );
 
     filteredListeners.forEach((listener) => {

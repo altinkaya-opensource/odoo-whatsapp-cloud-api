@@ -60,6 +60,7 @@
                             <field name="api_version" />
                             <field name="waba_id" />
                             <field name="webhook_secret" />
+                            <field name="app_secret" password="True" />
 
                             <field name="frontend_webhook_url" />
                             <field name="frontend_webhook_secret" />

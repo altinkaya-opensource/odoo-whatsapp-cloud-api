@@ -9,14 +9,14 @@ export default function TabActivePanel() {
 
   if (selectedTab === "chats") {
     return (
-      <section className="col-span-6 md:col-span-16 h-full min-h-0 w-full bg-[rgb(var(--bg-primary)/0.9)]">
+      <section className="workspace-conversation h-full min-h-0 w-full">
         <CurrentChat />
       </section>
     );
   }
 
   return (
-    <section className="col-span-16 h-full min-h-0 w-full bg-[rgb(var(--bg-primary)/0.9)] flex flex-col justify-center items-center gap-4 px-6">
+    <section className="workspace-conversation flex h-full min-h-0 w-full flex-col items-center justify-center gap-4 px-6">
       <GearSixIcon className="size-10 text-[rgb(var(--text-secondary))]" />
       <p className="text-[rgb(var(--text-primary))] text-3xl capitalize">
         {t(`navigation.${selectedTab}`)}

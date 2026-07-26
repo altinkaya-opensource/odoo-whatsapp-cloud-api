@@ -22,6 +22,7 @@ type TemplatePickerProps = {
   backendId: number | null;
   disabled?: boolean;
   onSent?: () => void;
+  triggerVariant?: "icon" | "cta";
 };
 
 export default function TemplatePicker({
@@ -30,6 +31,7 @@ export default function TemplatePicker({
   backendId,
   disabled,
   onSent,
+  triggerVariant = "icon",
 }: TemplatePickerProps) {
   const { t } = useTranslations();
   const { sessionId } = useAuth();
@@ -74,6 +76,21 @@ export default function TemplatePicker({
     }
   }, [isOpen, fetchTemplates]);
 
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [isOpen]);
+
   const handleSend = async (template: SimpleTemplate) => {
     if (!sessionId) {
       setError(t("template.error"));
@@ -112,31 +129,46 @@ export default function TemplatePicker({
   };
 
   return (
-    <div className="relative ms-2">
+    <div className={triggerVariant === "cta" ? "shrink-0" : "relative ms-2"}>
       <button
         type="button"
         onClick={() => setIsOpen(true)}
         disabled={disabled}
         title={t("chatInput.sendTemplate")}
-        className="text-[rgb(var(--text-secondary))] hover:text-[rgb(var(--accent-primary))] disabled:opacity-40 disabled:cursor-not-allowed transition-colors p-2 mb-1"
+        aria-label={t("chatInput.sendTemplate")}
+        className={
+          triggerVariant === "cta"
+            ? "primary-action flex items-center gap-2 px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+            : "icon-action mb-1 size-10 disabled:cursor-not-allowed disabled:opacity-40"
+        }
       >
         <ChatTeardropText className="size-5 md:size-5" weight="bold" />
+        {triggerVariant === "cta" && <span>{t("chatInput.sendTemplate")}</span>}
       </button>
 
       {isOpen && (
         <div
-          className="fixed inset-0 bg-[rgb(var(--bg-overlay)/var(--bg-overlay-opacity))] flex items-center justify-center p-4"
+          className="fixed inset-0 flex items-center justify-center bg-[rgb(var(--bg-overlay)/var(--bg-overlay-opacity))] p-4 backdrop-blur-sm"
           style={{ zIndex: 10000 }}
         >
-          <div className="bg-[rgb(var(--bg-primary))] rounded-lg max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between p-4 border-b border-[rgb(var(--border-primary)/var(--border-primary-opacity))]">
-              <h3 className="text-[rgb(var(--text-primary))] font-semibold">
+          <div
+            className="surface-card flex max-h-[90dvh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="template-picker-title"
+          >
+            <div className="flex items-center justify-between border-b border-[rgb(var(--border-primary)/var(--border-primary-opacity))] p-4">
+              <h3
+                id="template-picker-title"
+                className="text-[rgb(var(--text-primary))] font-semibold"
+              >
                 {t("template.title")}
               </h3>
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
-                className="text-[rgb(var(--text-secondary))] hover:text-[rgb(var(--text-primary))]"
+                className="icon-action size-9"
+                aria-label={t("template.cancel")}
               >
                 <X className="size-6" weight="bold" />
               </button>
@@ -144,7 +176,10 @@ export default function TemplatePicker({
 
             <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-3">
               {error && (
-                <div className="bg-[rgb(var(--status-error)/0.2)] border border-[rgb(var(--status-error))] text-[rgb(var(--status-error))] px-4 py-2 rounded">
+                <div
+                  className="rounded-xl border border-[rgb(var(--status-error)/0.35)] bg-[rgb(var(--status-error)/0.1)] px-4 py-3 text-[rgb(var(--status-error))]"
+                  role="alert"
+                >
                   {error}
                 </div>
               )}
@@ -167,7 +202,7 @@ export default function TemplatePicker({
                   return (
                     <div
                       key={template.id}
-                      className="bg-[rgb(var(--bg-secondary)/var(--bg-secondary-opacity))] rounded-lg p-4 border border-[rgb(var(--border-primary)/var(--border-primary-opacity))]"
+                      className="rounded-xl border border-[rgb(var(--border-primary)/var(--border-primary-opacity))] bg-[rgb(var(--bg-secondary))] p-4"
                     >
                       <div className="flex items-center justify-between gap-3 mb-2">
                         <div className="flex items-center gap-2 min-w-0">
@@ -175,7 +210,7 @@ export default function TemplatePicker({
                             {template.name}
                           </p>
                           {template.language && (
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-[rgb(var(--bg-input)/var(--bg-input-opacity))] text-[rgb(var(--text-secondary))]">
+                            <span className="rounded-md bg-[rgb(var(--bg-card))] px-2 py-1 text-xs text-[rgb(var(--text-secondary))]">
                               {template.language}
                             </span>
                           )}
@@ -184,7 +219,7 @@ export default function TemplatePicker({
                           type="button"
                           onClick={() => handleSend(template)}
                           disabled={sendingId !== null}
-                          className="shrink-0 px-4 py-1.5 bg-[rgb(var(--accent-primary))] hover:bg-[rgb(var(--status-success))] text-white rounded-full text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="primary-action shrink-0 px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {isSending
                             ? t("chatInput.sending")
@@ -199,11 +234,11 @@ export default function TemplatePicker({
                 })}
             </div>
 
-            <div className="flex items-center justify-end gap-3 p-4 border-t border-[rgb(var(--border-primary)/var(--border-primary-opacity))]">
+            <div className="flex items-center justify-end border-t border-[rgb(var(--border-primary)/var(--border-primary-opacity))] p-4">
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
-                className="px-4 py-2 text-[rgb(var(--text-secondary))] hover:text-[rgb(var(--text-primary))] transition"
+                className="secondary-action px-4 py-2 text-sm font-semibold"
               >
                 {t("template.cancel")}
               </button>

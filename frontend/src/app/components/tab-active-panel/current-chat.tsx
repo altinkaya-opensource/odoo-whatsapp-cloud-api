@@ -18,7 +18,13 @@ import DragDropZone from "../message/drag-drop-zone";
 import SuggestionChips from "../message/suggestion-chips";
 import { useTranslations } from "@/app/context/translation-provider";
 import { useContacts } from "@/app/hooks/use-contacts";
-import { XCircleIcon, Sparkle, TranslateIcon } from "@phosphor-icons/react";
+import { useAuth } from "@/app/hooks/use-auth";
+import {
+  ChatCircleDotsIcon,
+  XCircleIcon,
+  Sparkle,
+  TranslateIcon,
+} from "@phosphor-icons/react";
 
 export default function CurrentChat() {
   const {
@@ -58,6 +64,7 @@ export default function CurrentChat() {
   >(null);
   const { t, locale } = useTranslations();
   const { contacts } = useContacts();
+  const { sessionId } = useAuth();
 
   useEffect(() => {
     // Abort any ongoing suggestion requests when switching threads
@@ -222,7 +229,7 @@ export default function CurrentChat() {
       await sendAttachment(file, caption);
     } catch (error) {
       const err = error as Error;
-      setSendError(err.message || "Failed to send attachment");
+      setSendError(err.message || t("chatInput.attachmentError"));
     }
   };
 
@@ -249,6 +256,7 @@ export default function CurrentChat() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "x-session-id": sessionId ?? "",
         },
         body: JSON.stringify({
           messages: messages.slice(-10), // Last 10 messages
@@ -330,6 +338,7 @@ export default function CurrentChat() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "x-session-id": sessionId ?? "",
         },
         body: JSON.stringify({
           messages: messages.slice(-10), // Last 10 messages
@@ -416,7 +425,10 @@ export default function CurrentChat() {
       try {
         const response = await fetch("/api/ai/translate-message", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "x-session-id": sessionId ?? "",
+          },
           body: JSON.stringify({
             text: message.message,
             targetLanguage: locale,
@@ -478,7 +490,10 @@ export default function CurrentChat() {
         try {
           const cacheResponse = await fetch(
             `/api/ai/rag-suggestions?threadId=${chatId}&lastMessageId=${lastMessageId}`,
-            { signal: abortController.signal }
+            {
+              signal: abortController.signal,
+              headers: { "x-session-id": sessionId ?? "" },
+            }
           );
 
           if (cacheResponse.ok) {
@@ -507,7 +522,10 @@ export default function CurrentChat() {
       try {
         const response = await fetch("/api/ai/rag-suggestions", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "x-session-id": sessionId ?? "",
+          },
           body: JSON.stringify({
             threadId: chatId,
             lastMessageId,
@@ -614,8 +632,15 @@ export default function CurrentChat() {
 
   if (!chatId) {
     return (
-      <section className="w-full h-full text-[rgb(var(--text-primary))] flex justify-center items-center">
-        {t("app.selectChatPrompt")}
+      <section className="conversation-canvas flex h-full w-full items-center justify-center p-6 text-[rgb(var(--text-primary))]">
+        <div className="surface-card flex max-w-sm flex-col items-center rounded-2xl p-8 text-center">
+          <span className="flex size-12 items-center justify-center rounded-2xl bg-[rgb(var(--accent-primary)/0.12)] text-[rgb(var(--accent-primary))]">
+            <ChatCircleDotsIcon className="size-6" weight="fill" />
+          </span>
+          <p className="mt-4 text-sm leading-6 text-[rgb(var(--text-secondary))]">
+            {t("app.selectChatPrompt")}
+          </p>
+        </div>
       </section>
     );
   }
@@ -638,21 +663,19 @@ export default function CurrentChat() {
   };
 
   return (
-    <section className="w-full h-full flex flex-col">
+    <section className="flex h-full w-full flex-col">
       <ContactHeader />
       <DragDropZone
         onFilesDrop={handleFilesDrop}
         disabled={isSending || !chatId}
       >
-        <div className="relative flex-1 min-h-0 w-full flex flex-col">
-          <div className="absolute inset-0 background-custom pointer-events-none"></div>
-
+        <div className="conversation-canvas relative flex min-h-0 w-full flex-1 flex-col">
           <div
             ref={scrollContainerRef}
-            className="relative flex-1 min-h-0 w-full overflow-y-auto custom-scrollbar"
+            className="custom-scrollbar relative w-full min-h-0 flex-1 overflow-y-auto"
           >
             <div className="min-h-full flex flex-col justify-end">
-              <div className="p-4 md:p-4 px-3 md:px-4 flex flex-col gap-2">
+              <div className="flex flex-col gap-2 px-3 py-4 md:px-5">
                 {isPaginationLoading && (
                   <div className="w-full flex justify-center items-center py-3">
                     <div className="flex items-center gap-2 text-[rgb(var(--text-secondary)/var(--text-secondary-opacity))]">
@@ -675,8 +698,8 @@ export default function CurrentChat() {
                         key={`label-${item.key}`}
                         className="w-full flex justify-center items-center"
                       >
-                        <div className="rounded-full overflow-hidden bg-[rgb(var(--bg-primary))] z-20 w-fit">
-                          <p className="bg-[rgb(var(--bg-secondary)/var(--bg-secondary-opacity))] text-[rgb(var(--text-secondary)/var(--text-secondary-opacity))] h-full w-full text-xs p-1 px-2">
+                        <div className="z-20 w-fit rounded-lg border border-[rgb(var(--border-primary)/var(--border-primary-opacity))] bg-[rgb(var(--bg-card))] px-2.5 py-1 shadow-sm">
+                          <p className="text-xs font-medium text-[rgb(var(--text-secondary))]">
                             {formatDayLabel(item.day)}
                           </p>
                         </div>
@@ -695,10 +718,10 @@ export default function CurrentChat() {
                       key={message.id ?? `message-${index}`}
                     >
                       <div
-                        className={`flex justify-between gap-2 items-center ${getMessageSpacing(
+                        className={`group relative flex items-center justify-between gap-2 ${getMessageSpacing(
                           index,
                           message.reactions?.length
-                        )} relative`}
+                        )}`}
                       >
                         {message.isSentFromUser && (
                           <Reaction
@@ -765,8 +788,8 @@ export default function CurrentChat() {
                               message.isSentFromUser ? "right-3" : "left-3"
                             }`}
                           >
-                            <div className="flex justify-center items-center rounded-xl overflow-hidden bg-black">
-                              <p className="text-xs rounded-xl border-[1px] border-white/25 bg-white/20 px-1.5 py-0.5">
+                            <div className="flex items-center justify-center overflow-hidden rounded-xl border border-[rgb(var(--border-primary)/var(--border-primary-opacity))] bg-[rgb(var(--bg-card))] shadow-sm">
+                              <p className="px-1.5 py-0.5 text-xs">
                                 {message.reactionEmoji}
                               </p>
                             </div>
@@ -780,12 +803,24 @@ export default function CurrentChat() {
             </div>
           </div>
 
-          <section className="w-full z-50 p-4">
+          <section className="w-full shrink-0 border-t border-[rgb(var(--border-primary)/var(--border-primary-opacity))] bg-[rgb(var(--bg-card))] p-3 md:p-4">
             {isServiceWindowExpired && (
-              <div className="bg-[rgb(var(--status-info)/0.15)] border border-[rgb(var(--status-info)/0.3)] rounded-lg px-4 py-3 mb-2">
-                <p className="text-xs text-[rgb(var(--text-secondary))]">
+              <div
+                className="mb-3 flex flex-col gap-3 rounded-xl border border-[rgb(var(--status-warning)/0.35)] bg-[rgb(var(--status-warning)/0.1)] p-3 sm:flex-row sm:items-center sm:justify-between"
+                role="alert"
+              >
+                <p className="max-w-xl text-xs leading-5 text-[rgb(var(--text-primary))]">
                   {t("chatInput.serviceWindowExpired")}
                 </p>
+                {chatId && phoneNumber && (
+                  <TemplatePicker
+                    threadId={Number(chatId)}
+                    phoneNumber={phoneNumber}
+                    backendId={backendId}
+                    disabled={isSending}
+                    triggerVariant="cta"
+                  />
+                )}
               </div>
             )}
             <SuggestionChips
@@ -798,7 +833,7 @@ export default function CurrentChat() {
               }
             />
             {replyTo && (
-              <div className="bg-[rgb(var(--bg-input)/var(--bg-input-opacity))] border-l-2 border-[rgb(var(--accent-primary))] px-3 py-2 rounded-lg mb-2 flex justify-between items-start gap-3">
+              <div className="mb-3 flex items-start justify-between gap-3 rounded-xl border-l-[3px] border-[rgb(var(--accent-primary))] bg-[rgb(var(--bg-secondary))] px-3 py-2.5">
                 <div className="flex flex-col">
                   <p className="text-xs text-[rgb(var(--accent-primary))] font-semibold">
                     {t("chatInput.replyingTo", {
@@ -808,13 +843,13 @@ export default function CurrentChat() {
                             ?.displayName ?? ""),
                     })}
                   </p>
-                  <p className="text-xs text-[rgb(var(--text-secondary)/var(--text-tertiary-opacity))] max-w-xs truncate">
+                  <p className="max-w-xs truncate text-xs text-[rgb(var(--text-secondary))]">
                     {replyTo.message}
                   </p>
                 </div>
                 <button
                   type="button"
-                  className="text-[rgb(var(--text-secondary))] hover:text-[rgb(var(--text-primary))] p-2 active:bg-[rgb(var(--bg-secondary)/var(--bg-secondary-opacity))] rounded-lg transition-colors"
+                  className="icon-action size-8 shrink-0"
                   onClick={cancelReply}
                 >
                   <XCircleIcon className="size-5 md:size-4" weight="bold" />
@@ -822,21 +857,13 @@ export default function CurrentChat() {
               </div>
             )}
             <form onSubmit={handleSubmit}>
-              <div className="bg-[rgb(var(--bg-input)/var(--bg-input-opacity))] rounded-3xl flex items-end gap-2 py-2">
+              <div className="control-field flex items-end gap-1.5 px-1.5 py-1.5 shadow-sm">
                 <AttachmentPicker
                   onAttachmentSelect={handleAttachmentSelect}
                   disabled={isSending || isServiceWindowExpired}
                   externalFile={droppedFile}
                   onExternalFileProcessed={handleDroppedFileProcessed}
                 />
-                {isServiceWindowExpired && chatId && phoneNumber && (
-                  <TemplatePicker
-                    threadId={Number(chatId)}
-                    phoneNumber={phoneNumber}
-                    backendId={backendId}
-                    disabled={isSending}
-                  />
-                )}
                 <button
                   type="button"
                   onClick={handleTranslate}
@@ -847,12 +874,13 @@ export default function CurrentChat() {
                     isServiceWindowExpired ||
                     messageText.trim().length === 0
                   }
-                  className={`text-[rgb(var(--text-secondary))] hover:text-[rgb(var(--accent-primary))] disabled:opacity-40 disabled:cursor-not-allowed transition-all p-2 mb-1 active:scale-95 ${
+                  className={`icon-action mb-0.5 size-9 shrink-0 disabled:cursor-not-allowed disabled:opacity-40 ${
                     isTranslating
                       ? "animate-pulse text-[rgb(var(--accent-primary))]"
                       : ""
                   }`}
                   title={t("chatInput.translate")}
+                  aria-label={t("chatInput.translate")}
                 >
                   <TranslateIcon
                     className={`size-5 md:size-5 transition-transform ${
@@ -874,12 +902,13 @@ export default function CurrentChat() {
                     isServiceWindowExpired ||
                     messages.length === 0
                   }
-                  className={`text-[rgb(var(--text-secondary))] hover:text-[rgb(var(--accent-primary))] disabled:opacity-40 disabled:cursor-not-allowed transition-all p-2 mb-1 active:scale-95 ${
+                  className={`icon-action mb-0.5 size-9 shrink-0 disabled:cursor-not-allowed disabled:opacity-40 ${
                     isAiImproving
                       ? "animate-pulse text-[rgb(var(--accent-primary))]"
                       : ""
                   }`}
                   title={t("chatInput.aiImprove")}
+                  aria-label={t("chatInput.aiImprove")}
                 >
                   <Sparkle
                     className={`size-5 md:size-5 transition-transform ${
@@ -893,7 +922,7 @@ export default function CurrentChat() {
                 </button>
                 <textarea
                   ref={textareaRef}
-                  className={`flex-1 outline-none p-3 px-4 md:p-3 text-[rgb(var(--text-primary))] placeholder-[rgb(var(--text-secondary))] caret-[rgb(var(--accent-primary))] text-sm md:text-sm bg-transparent resize-none overflow-y-auto custom-scrollbar min-h-[44px] max-h-[120px] transition-[height] duration-150 ease-out ${
+                  className={`custom-scrollbar min-h-[44px] max-h-[120px] flex-1 resize-none overflow-y-auto bg-transparent px-2.5 py-2.5 text-sm text-[rgb(var(--text-primary))] caret-[rgb(var(--accent-primary))] outline-none placeholder-[rgb(var(--text-secondary)/var(--text-quaternary-opacity))] transition-[height] duration-150 ease-out ${
                     isTypingAnimation ? "animate-pulse" : ""
                   }`}
                   placeholder={
@@ -931,14 +960,17 @@ export default function CurrentChat() {
                     isServiceWindowExpired ||
                     messageText.trim().length === 0
                   }
-                  className="text-sm font-semibold text-white bg-[rgb(var(--accent-primary))] hover:bg-[rgb(var(--status-success))] active:bg-[rgb(var(--accent-primary)/0.8)] disabled:opacity-60 disabled:cursor-not-allowed transition rounded-full px-5 py-2.5 md:px-4 mr-2 mb-1"
+                  className="primary-action mb-0.5 mr-0.5 shrink-0 px-4 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {isSending ? t("chatInput.sending") : t("chatInput.send")}
                 </button>
               </div>
             </form>
             {sendError && (
-              <p className="text-xs text-[rgb(var(--status-error))] mt-2 px-2">
+              <p
+                className="mt-2 px-1 text-xs text-[rgb(var(--status-error))]"
+                role="alert"
+              >
                 {sendError}
               </p>
             )}

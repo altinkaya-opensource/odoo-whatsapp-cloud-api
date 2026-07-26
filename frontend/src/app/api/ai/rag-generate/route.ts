@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireSession } from "@/app/lib/odoo/server";
 import {
   isAIEnabled,
   isRagEnabled,
@@ -25,6 +26,11 @@ export async function POST(request: NextRequest) {
         { error: "AI feature is not enabled" },
         { status: 403 }
       );
+    }
+
+    const auth = await requireSession(request);
+    if ("response" in auth) {
+      return auth.response;
     }
 
     // Check if RAG feature is enabled

@@ -1,13 +1,12 @@
 "use client";
 
-import { PropsWithChildren, useRef, useState } from "react";
+import { PropsWithChildren } from "react";
 
 type TooltipWrapperProps = {
   selected?: boolean;
   onClick?: () => void;
   isProfile?: boolean;
   tab?: string;
-  showTooltip?: boolean;
 };
 
 export default function TooltipWrapper({
@@ -16,54 +15,20 @@ export default function TooltipWrapper({
   tab,
   onClick,
   children,
-  showTooltip = true,
 }: PropsWithChildren<TooltipWrapperProps>) {
-  const position = "right";
-  const offset = 4;
-  const wrapperRef = useRef<HTMLButtonElement | null>(null);
-  const [isHovering, setIsHovering] = useState(false);
-
-  const tooltipPositionStyles = () => {
-    if (position === "right") {
-      return {
-        left: wrapperRef.current
-          ? wrapperRef.current.getBoundingClientRect().right
-          : 0,
-      };
-    }
-    return {};
-  };
-
-  const getOffset = () => {
-    if (position === "right") {
-      return `ml-${offset}`;
-    }
-    return "";
-  };
-
   return (
     <button
-      className={`${
-        isProfile ? "p-1" : "p-2"
-      } flex justify-center items-center ${
+      className={`icon-action relative ${isProfile ? "p-1" : "size-10"} ${
         selected
-          ? "bg-[rgb(var(--bg-tooltip)/var(--bg-tooltip-opacity))]"
-          : "bg-transparent"
-      } hover:bg-[rgb(var(--bg-tooltip)/var(--bg-tooltip-opacity))] rounded-full outline-none cursor-pointer relative`}
+          ? "bg-[rgb(var(--accent-primary)/0.14)] text-[rgb(var(--accent-primary))] ring-1 ring-[rgb(var(--accent-primary)/0.2)]"
+          : ""
+      }`}
       onClick={onClick}
-      onMouseOver={() => setIsHovering(true)}
-      onMouseLeave={() => setIsHovering(false)}
-      ref={wrapperRef}
+      title={tab}
+      aria-label={tab}
+      type="button"
     >
       {children}
-      {showTooltip && isHovering && (
-        <div
-          className={`absolute ${getOffset()} bg-[rgb(var(--text-primary))] text-[rgb(var(--bg-primary))] text-xs font-semibold py-1 px-2 rounded-full capitalize z-50`}
-          style={tooltipPositionStyles()}
-        >
-          {tab}
-        </div>
-      )}
     </button>
   );
 }

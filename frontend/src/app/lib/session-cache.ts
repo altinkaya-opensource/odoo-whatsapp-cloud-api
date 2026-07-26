@@ -34,7 +34,7 @@ class SessionCache {
     });
 
     console.log(
-      `[SessionCache] Stored session ${sessionId} with backends: [${backendIds.join(", ")}]`
+      `[SessionCache] Stored a session with backends: [${backendIds.join(", ")}]`
     );
   }
 
@@ -53,7 +53,7 @@ class SessionCache {
     const age = Date.now() - data.timestamp;
     if (age > this.TTL_MS) {
       console.log(
-        `[SessionCache] Session ${sessionId} expired (age: ${Math.round(age / 1000 / 60)}min)`
+        `[SessionCache] Session expired (age: ${Math.round(age / 1000 / 60)}min)`
       );
       this.cache.delete(sessionId);
       return null;
@@ -67,7 +67,7 @@ class SessionCache {
    */
   delete(sessionId: string): void {
     if (this.cache.delete(sessionId)) {
-      console.log(`[SessionCache] Deleted session ${sessionId}`);
+      console.log("[SessionCache] Deleted a session");
     }
   }
 

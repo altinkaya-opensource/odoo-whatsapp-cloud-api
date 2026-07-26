@@ -9,6 +9,7 @@ import {
   PropsWithChildren,
 } from "react";
 import TabActivePanel from "./components/tab-active-panel";
+import ConversationContext from "./components/conversation-context";
 import TabIcons from "./components/tab-icons";
 import TabPanel from "./components/tab-panel";
 import ChatsProvider from "./context/chats-provider";
@@ -36,6 +37,7 @@ import { useCurrentChat } from "./hooks/use-current-chat";
 import TabSyncProvider from "./context/tab-sync-provider";
 import { useTabSync } from "./hooks/use-tab-sync";
 import SessionBlockedOverlay from "./components/session-blocked-overlay";
+import { onOpenThreadRequest } from "./lib/notifications";
 
 // Context to pass initial thread_id to child components
 const InitialThreadContext = createContext<string | null>(null);
@@ -121,26 +123,83 @@ function AutoSelectChat() {
   return null;
 }
 
+/**
+ * Opens the conversation a desktop notification was clicked on.
+ */
+function NotificationRouter() {
+  const { chats } = useChats();
+  const { loadCurrentChat, chatId } = useCurrentChat();
+  const { setCurrentView } = useMobileNavigation();
+
+  useEffect(() => {
+    return onOpenThreadRequest((threadId) => {
+      if (threadId === chatId) {
+        setCurrentView("activeChat");
+        return;
+      }
+
+      const target = chats.complete.find((chat) => chat.id === threadId);
+      if (!target) {
+        return;
+      }
+
+      loadCurrentChat({
+        chatId: target.id,
+        page: 0,
+        messages: [],
+        contact: null,
+        group: null,
+        threadName: target.threadName ?? null,
+        phoneNumber: target.phoneNumber ?? null,
+        backendId: target.backendId ?? null,
+        partnerId: target.partnerId ?? null,
+        partnerName: target.partnerName ?? null,
+        partnerAvatar: target.partnerAvatar ?? null,
+        hasAvatar: target.hasAvatar ?? false,
+      });
+      setCurrentView("activeChat");
+    });
+  }, [chats.complete, chatId, loadCurrentChat, setCurrentView]);
+
+  return null;
+}
+
 function ResponsiveLayout() {
   const { isMobile, isInitialized } = useResponsive();
   const { currentView } = useMobileNavigation();
+  const { t } = useTranslations();
 
-  // Prevent flash of wrong layout during hydration
+  // Use a shaped loading state instead of a blank page while responsive
+  // layout information becomes available after hydration.
   if (!isInitialized) {
-    return null;
+    return (
+      <section className="app-shell flex h-[100dvh] items-center justify-center p-6">
+        <div className="surface-card flex w-full max-w-sm flex-col gap-5 rounded-2xl p-6">
+          <div className="h-3 w-24 animate-pulse rounded-full bg-[rgb(var(--bg-tertiary))]" />
+          <div className="h-9 w-3/4 animate-pulse rounded-xl bg-[rgb(var(--bg-secondary))]" />
+          <p className="text-sm text-[rgb(var(--text-secondary))]">
+            {t("app.loadingWorkspace")}
+          </p>
+        </div>
+      </section>
+    );
   }
 
   // Mobile layout: single panel view
   if (isMobile) {
     return (
-      <section className="h-full min-h-0 w-full flex flex-col">
+      <section className="app-shell flex h-[100dvh] min-h-0 w-full flex-col">
         {currentView === "chatList" ? (
           <>
-            <TabPanel />
+            <div className="min-h-0 flex-1">
+              <TabPanel />
+            </div>
             <TabIcons />
           </>
         ) : (
-          <TabActivePanel />
+          <div className="min-h-0 flex-1">
+            <TabActivePanel />
+          </div>
         )}
         <ConnectionOverlay />
       </section>
@@ -149,10 +208,11 @@ function ResponsiveLayout() {
 
   // Tablet/Desktop layout: multi-panel grid
   return (
-    <section className="h-full min-h-0 w-full grid grid-cols-14 md:grid-cols-24">
+    <section className="app-shell grid h-[100dvh] min-h-0 w-full grid-cols-[64px_minmax(280px,360px)_minmax(0,1fr)] xl:grid-cols-[72px_minmax(320px,380px)_minmax(0,1fr)_minmax(264px,312px)]">
       <TabIcons />
       <TabPanel />
       <TabActivePanel />
+      <ConversationContext />
       <ConnectionOverlay />
     </section>
   );
@@ -185,6 +245,7 @@ function AppShell() {
             <CurrentChatProvider>
               <MobileNavigationProvider>
                 <AutoSelectChat />
+                <NotificationRouter />
                 <ResponsiveLayout />
               </MobileNavigationProvider>
             </CurrentChatProvider>
@@ -268,9 +329,9 @@ function AuthenticatedApp() {
   // Show SSO loading state (only check after client hydration)
   if (isSsoLoading) {
     return (
-      <section className="min-h-screen w-full flex items-center justify-center bg-[rgb(var(--bg-primary))] text-[rgb(var(--text-primary))]">
-        <div className="text-center">
-          <div className="inline-block w-12 h-12 border-4 border-[rgb(var(--accent-primary)/0.3)] border-t-[rgb(var(--accent-primary))] rounded-full animate-spin mb-4"></div>
+      <section className="app-shell flex min-h-[100dvh] w-full items-center justify-center p-6 text-[rgb(var(--text-primary))]">
+        <div className="surface-card w-full max-w-sm rounded-2xl p-8 text-center">
+          <div className="mx-auto mb-4 inline-block size-10 animate-spin rounded-full border-[3px] border-[rgb(var(--accent-primary)/0.24)] border-t-[rgb(var(--accent-primary))]" />
           <p className="text-lg text-[rgb(var(--text-secondary)/var(--text-tertiary-opacity))]">
             {t("auth.ssoLoggingIn") || "Logging in from Odoo..."}
           </p>
@@ -281,10 +342,13 @@ function AuthenticatedApp() {
 
   if (isCheckingAuth) {
     return (
-      <section className="min-h-screen w-full flex items-center justify-center bg-[rgb(var(--bg-primary))] text-[rgb(var(--text-primary))]">
-        <p className="text-lg text-[rgb(var(--text-secondary)/var(--text-tertiary-opacity))]">
-          {t("app.loadingWorkspace")}
-        </p>
+      <section className="app-shell flex min-h-[100dvh] w-full items-center justify-center p-6 text-[rgb(var(--text-primary))]">
+        <div className="surface-card w-full max-w-sm rounded-2xl p-8 text-center">
+          <div className="mx-auto mb-4 h-2 w-20 animate-pulse rounded-full bg-[rgb(var(--accent-primary))]" />
+          <p className="text-lg text-[rgb(var(--text-secondary)/var(--text-tertiary-opacity))]">
+            {t("app.loadingWorkspace")}
+          </p>
+        </div>
       </section>
     );
   }
