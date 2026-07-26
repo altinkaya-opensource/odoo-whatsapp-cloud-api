@@ -32,8 +32,9 @@ jobs:
           file: ./frontend/Dockerfile
           push: false
           tags: odoo-whatsapp-frontend:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # No type=gha cache: our Forgejo runner does not serve the artifact
+          # cache API, so buildkit times out reaching it and fails the build
+          # after the image has already been built.
           load: true
 
       - name: Test Docker image
