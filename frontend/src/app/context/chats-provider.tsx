@@ -165,6 +165,8 @@ export default function ChatsProvider({
   const { sessionId, backendId: authBackendId } = useAuth();
   const { reportApiError, reportConnectionRestored } = useConnection();
   const isFetchingRef = useRef(false);
+  const latestRequestIdRef = useRef(0);
+  const applyFilterRef = useRef<(chats: Chat[]) => Chat[]>((chats) => chats);
   const chatsRef = useRef<Chat[]>([]);
   const [serverUnreadCount, setServerUnreadCount] = useState<number | null>(
     null
@@ -331,25 +333,17 @@ export default function ChatsProvider({
           );
         }
 
-        // Apply filter to get filtered list
-        let filteredList = updatedComplete;
-        if (filter === Filters.UNREAD) {
-          filteredList = updatedComplete.filter((chat) => !chat.read);
-        } else if (filter === Filters.FAVORITES) {
-          filteredList = updatedComplete.filter((chat) => chat.favorite);
-        } else if (filter === Filters.GROUPS) {
-          filteredList = updatedComplete.filter((chat) => chat.group);
-        }
-
         return {
           ...prev,
           complete: updatedComplete,
-          filtered: filteredList,
+          // Same filter as everywhere else, so a live update cannot slip a
+          // thread from another phone number into a filtered list.
+          filtered: applyFilterRef.current(updatedComplete),
           isLoading: false,
         };
       });
     },
-    [filter, odooBaseUrl, sessionId]
+    [odooBaseUrl, sessionId]
   );
 
   // Handle message arrivals to update thread list (unread count, preview, timestamp)
@@ -365,16 +359,11 @@ export default function ChatsProvider({
 
       if (odooMessages.length === 0) return;
 
+      // The thread may not be loaded yet (older than the first page, or new).
+      // Still alert the user - only the title falls back.
       const chat = chatsRef.current.find((entry) => entry.id === threadId);
-      if (!chat) {
-        return;
-      }
-
       const threadName =
-        chat.partnerName ||
-        chat.threadName ||
-        chat.phoneNumber ||
-        `Thread ${threadId}`;
+        chat?.partnerName || chat?.threadName || chat?.phoneNumber || null;
 
       // Notify outside of the state updater: this is the only place that
       // alerts the user about a message, and it must run exactly once per
@@ -388,7 +377,7 @@ export default function ChatsProvider({
         const { isNew, interrupted } = notifyIncomingMessage({
           threadId,
           messageId: message.id,
-          title: threadName,
+          title: threadName ?? "WhatsApp",
           body: message.body || "New message",
         });
 
@@ -512,6 +501,10 @@ export default function ChatsProvider({
     },
     [filter, selectedBackendId]
   );
+
+  useEffect(() => {
+    applyFilterRef.current = applyFilter;
+  }, [applyFilter]);
 
   const updateFilter = (filter: string) => {
     setFilter(filter as Filters);
@@ -756,10 +749,13 @@ export default function ChatsProvider({
         return;
       }
 
-      if (isFetchingRef.current) {
+      // Only one page-in-flight at a time for "load more"; a filter change
+      // must not be dropped, so it supersedes the request in flight instead.
+      if (append && isFetchingRef.current) {
         return;
       }
 
+      const requestId = ++latestRequestIdRef.current;
       isFetchingRef.current = true;
       if (showLoading) {
         setChats((prev) => ({ ...prev, isLoading: true }));
@@ -781,6 +777,11 @@ export default function ChatsProvider({
         if (debouncedSearchQuery.trim().length > 0) {
           url += `&search=${encodeURIComponent(debouncedSearchQuery.trim())}`;
         }
+        // Let Odoo do the filtering: a full page of threads for the selected
+        // phone number, instead of whatever survives filtering 30 mixed rows.
+        if (selectedBackendId !== null) {
+          url += `&backendId=${selectedBackendId}`;
+        }
 
         const response = await fetch(url, {
           headers: {
@@ -796,6 +797,9 @@ export default function ChatsProvider({
         }
 
         const data = await response.json();
+        if (requestId !== latestRequestIdRef.current) {
+          return; // A newer filter/search replaced this request.
+        }
         const threads: ThreadRecord[] = Array.isArray(data?.threads)
           ? data.threads
           : [];
@@ -850,6 +854,7 @@ export default function ChatsProvider({
       applyFilter,
       includeThreadId,
       debouncedSearchQuery,
+      selectedBackendId,
     ]
   );
 

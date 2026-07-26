@@ -193,7 +193,14 @@
     "textLargeDescription": "Daha rahat okunan metinler",
     "language": "Dil",
     "languageDescription": "Uygulama dilini seçin.",
-    "savedLocally": "Görünüm tercihleriniz bu tarayıcıda saklanır."
+    "savedLocally": "Görünüm tercihleriniz bu tarayıcıda saklanır.",
+    "notifications": "Bildirimler",
+    "notificationsDescription": "Yeni mesaj geldiğinde masaüstü bildirimi alın.",
+    "notificationsEnable": "Bildirimleri aç",
+    "notificationsEnabled": "Masaüstü bildirimleri açık.",
+    "notificationsBlocked": "Bildirimler engellendi. Tarayıcı ayarlarından bu siteye izin verin.",
+    "notificationsPrompt": "Bildirimler kapalı. Bu sekme arka plandayken mesajlardan haberdar olmak için açın.",
+    "notificationsUnsupported": "Bu tarayıcı masaüstü bildirimlerini desteklemiyor."
   },
   "profile": {
     "identityDescription": "Giriş yaptığınız çalışma alanı kimliği.",

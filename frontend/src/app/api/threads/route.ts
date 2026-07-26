@@ -71,8 +71,17 @@ export async function GET(request: NextRequest) {
   const limitParam = request.nextUrl.searchParams.get("limit");
   const offsetParam = request.nextUrl.searchParams.get("offset");
   const searchQuery = request.nextUrl.searchParams.get("search");
+  const backendIdParam = request.nextUrl.searchParams.get("backendId");
   const limit = limitParam ? Number(limitParam) : 30;
   const offset = offsetParam ? Number(offsetParam) : 0;
+  const backendId = backendIdParam ? Number(backendIdParam) : null;
+
+  if (backendId !== null && !Number.isSafeInteger(backendId)) {
+    return NextResponse.json(
+      { error: "backendId must be a valid integer" },
+      { status: 400 }
+    );
+  }
 
   if (!Number.isFinite(limit) || limit <= 0) {
     return NextResponse.json(
@@ -113,6 +122,13 @@ export async function GET(request: NextRequest) {
     // Using Odoo's Polish notation for OR: "|" operator before the conditions
     type DomainElement = [string, string, unknown] | string;
     const domain: DomainElement[] = [];
+
+    // Filter by phone number server-side. Doing it in the browser meant
+    // paging through every backend's threads to find one backend's.
+    if (backendId !== null) {
+      domain.push(["backend_id", "=", backendId]);
+    }
+
     if (searchQuery && searchQuery.trim().length > 0) {
       const query = searchQuery.trim();
       // OR condition: search in thread name OR partner name
@@ -121,7 +137,9 @@ export async function GET(request: NextRequest) {
       domain.push(["partner_id.display_name", "ilike", query]);
     }
 
-    // Fetch recent threads
+    // Fetch recent threads. Order by the indexed last_message_date, which is
+    // also how the client sorts the list - ordering by the unindexed
+    // write_date made every page a full sort and broke pagination.
     const threads = await sessionClient.searchRead<ThreadRecord[]>(
       "whatsapp.thread",
       domain,
@@ -129,7 +147,7 @@ export async function GET(request: NextRequest) {
         limit: Math.min(limit, 100),
         offset,
         select: THREAD_FIELDS,
-        order: "write_date desc",
+        order: "last_message_date desc, id desc",
       }
     );
 

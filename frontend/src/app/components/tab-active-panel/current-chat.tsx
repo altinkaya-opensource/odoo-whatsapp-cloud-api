@@ -454,7 +454,7 @@ export default function CurrentChat() {
         setTranslatingMessageId(null);
       }
     },
-    [locale, translations]
+    [locale, translations, sessionId]
   );
 
   // Generate suggestions with server-side caching
@@ -554,7 +554,7 @@ export default function CurrentChat() {
         }
       }
     },
-    [messages, contacts, chatId]
+    [messages, contacts, chatId, sessionId]
   );
 
   // Handle suggestion selection - populate textarea

@@ -175,7 +175,6 @@ export async function POST(request: NextRequest) {
           ? payloadData.backend_id
           : undefined;
     }
-
   } catch (error) {
     console.error(`[Webhook] Failed to extract backend_id:`, error);
   }

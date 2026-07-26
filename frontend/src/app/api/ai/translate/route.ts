@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { requireSession } from "@/app/lib/odoo/server";
 import {
   createOpenAIClient,
   isAIEnabled,
