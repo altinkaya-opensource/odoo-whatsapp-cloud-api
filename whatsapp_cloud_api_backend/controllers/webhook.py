@@ -241,11 +241,15 @@ class WhatsAppCloudAPIWebhookController(http.Controller):
                 message_record.write({"attachment_id": attachment.id})
         thread._register_message(message_record)
 
-        # Handle chatbot logic for text and interactive messages
+        # Scripted chatbots handle text/interactive messages. Greeting-only
+        # chatbots also acknowledge media-only first contacts.
         if (
-            msg_type in ("text", "interactive")
-            and backend.chatbot_enabled
+            backend.chatbot_enabled
             and backend.chatbot_id
+            and (
+                msg_type in ("text", "interactive")
+                or (backend.chatbot_id.greeting_only and msg_type == "media")
+            )
         ):
             self._handle_chatbot_interaction(
                 backend, thread, partner, message_record.body or ""
@@ -490,6 +494,10 @@ class WhatsAppCloudAPIWebhookController(http.Controller):
         if not chatbot:
             return
 
+        if chatbot.greeting_only:
+            self._handle_greeting_only_chatbot(chatbot, thread)
+            return
+
         # Check if chatbot is ended (human handoff)
         if thread.chatbot_ended:
             return
@@ -505,6 +513,29 @@ class WhatsAppCloudAPIWebhookController(http.Controller):
 
         # Execute the step
         self._execute_chatbot_step(backend, thread, partner, next_step, message_text)
+
+    def _handle_greeting_only_chatbot(self, chatbot, thread):
+        """Send one time-based plain greeting per rolling 24-hour period."""
+        now = fields.Datetime.now()
+        if (
+            thread.chatbot_last_message_date
+            and now - thread.chatbot_last_message_date < timedelta(hours=24)
+        ):
+            return
+
+        message = chatbot._get_auto_reply_message(now)
+        if not message:
+            return
+
+        thread.send_text_message(message)
+        thread.sudo().write(
+            {
+                "chatbot_id": chatbot.id,
+                "chatbot_step_sequence": 0,
+                "chatbot_step_ended": False,
+                "chatbot_last_message_date": now,
+            }
+        )
 
     def _is_chatbot_session_expired(self, thread):
         """Check if chatbot session has expired (24 hours of inactivity)."""
