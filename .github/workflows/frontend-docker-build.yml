@@ -39,37 +39,22 @@ jobs:
 
       - name: Test Docker image
         run: |
-          # Start the container in detached mode
-          docker run -d --name test-frontend -p 3000:3000 odoo-whatsapp-frontend:${{ github.sha }}
+          # No published port: the runner already had 3000 taken once, and the
+          # check reaches the app from inside the container anyway.
+          docker rm -f test-frontend 2>/dev/null || true
+          docker run -d --name test-frontend odoo-whatsapp-frontend:${{ github.sha }}
 
-          # Wait for container to start (up to 30 seconds)
-          timeout=30
-          echo "Waiting for container to start..."
-          while [ $timeout -gt 0 ]; do
-            if docker ps | grep -q test-frontend; then
-              echo "Container started successfully"
-              break
+          for _ in $(seq 1 30); do
+            if docker exec test-frontend wget -q --spider http://127.0.0.1:3000/; then
+              echo "App responded"
+              docker logs test-frontend
+              docker rm -f test-frontend
+              exit 0
             fi
             sleep 1
-            timeout=$((timeout - 1))
           done
 
-          # Check if container is still running
-          if ! docker ps | grep -q test-frontend; then
-            echo "Container failed to start or exited"
-            docker logs test-frontend
-            exit 1
-          fi
-
-          # Optional: Wait a bit more for the app to be ready
-          sleep 5
-
-          # Check container logs for any errors
-          echo "Container logs:"
+          echo "App never responded"
           docker logs test-frontend
-
-          # Stop and remove the container
-          docker stop test-frontend
-          docker rm test-frontend
-
-          echo "Docker image test completed successfully"
+          docker rm -f test-frontend
+          exit 1
