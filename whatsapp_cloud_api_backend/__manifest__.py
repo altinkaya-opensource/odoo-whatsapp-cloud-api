@@ -3,12 +3,19 @@
 {
     "name": "WhatsApp Cloud API Backend",
     "summary": "WhatsApp Cloud API & Odoo Integration Backend",
-    "version": "16.0.1.1.0",
+    "version": "16.0.1.1.1",
     "author": "Ahmet Yiğit Budak, Erol Develi, Altinkaya Enclosures",
     "website": "https://github.com/altinkaya-opensource/odoo-whatsapp-cloud-api",
     "license": "LGPL-3",
     "category": "Tools",
-    "depends": ["base", "mail", "queue_job", "web", "account"],
+    "depends": [
+        "base",
+        "mail",
+        "queue_job",
+        "web",
+        "account",
+        "auth_totp_json",
+    ],
     "external_dependencies": {"python": ["requests", "phonenumbers"]},
     "data": [
         "security/whatsapp_security.xml",
