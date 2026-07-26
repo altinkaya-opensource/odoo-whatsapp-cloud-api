@@ -8,12 +8,26 @@ import {
   useMemo,
   useState,
 } from "react";
-import { OdooLoginResult } from "@/app/lib/odoo/jsonrpc";
+import type { OdooLoginResult } from "@/app/lib/odoo/jsonrpc";
 
 type BackendUser = {
   id: number;
   name: string;
   imageUrl?: string | null;
+};
+
+type BackendMeta = {
+  backend_id?: number;
+  backend_ids?: number[];
+  user_id?: number;
+  users?: { id: number; name: string; image_url?: string | null }[];
+  backend_names?: Record<number, string>;
+};
+
+type AuthenticatedResponse = {
+  sessionId?: string;
+  user?: OdooLoginResult | null;
+  backend?: BackendMeta;
 };
 
 type AuthContextValue = {
@@ -28,7 +42,11 @@ type AuthContextValue = {
   isAuthenticated: boolean;
   isCheckingAuth: boolean;
   isAuthenticating: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (
+    username: string,
+    password: string
+  ) => Promise<{ totpRequired: boolean }>;
+  verifyTotp: (code: string) => Promise<void>;
   loginWithSessionId: (sessionId: string) => Promise<void>;
   logout: () => void;
 };
@@ -170,6 +188,66 @@ export default function AuthProvider({ children }: PropsWithChildren) {
     window.localStorage.removeItem(SESSION_BACKEND_KEY);
   }, []);
 
+  const applyAuthenticatedResponse = useCallback(
+    ({
+      sessionId: newSessionId,
+      user: sessionUser,
+      backend,
+    }: AuthenticatedResponse) => {
+      if (!newSessionId) {
+        throw new Error("Missing session id in server response");
+      }
+
+      const backendUsersList: BackendUser[] = Array.isArray(backend?.users)
+        ? backend.users.map((backendUser) => ({
+            id: backendUser.id,
+            name: backendUser.name,
+            imageUrl: backendUser.image_url,
+          }))
+        : [];
+      const resolvedBackendId =
+        typeof backend?.backend_id === "number" ? backend.backend_id : null;
+      const resolvedBackendIds = Array.isArray(backend?.backend_ids)
+        ? backend.backend_ids
+        : [];
+      const resolvedBackendUserId =
+        typeof backend?.user_id === "number" ? backend.user_id : null;
+      const resolvedBackendNames =
+        backend?.backend_names && typeof backend.backend_names === "object"
+          ? backend.backend_names
+          : {};
+
+      setSessionId(newSessionId);
+      setUser(sessionUser ?? null);
+      setBackendId(resolvedBackendId);
+      setBackendIds(resolvedBackendIds);
+      setBackendUserId(resolvedBackendUserId);
+      setBackendUsers(backendUsersList);
+      setBackendNames(resolvedBackendNames);
+      persistSession(newSessionId, sessionUser ?? null, {
+        backendId: resolvedBackendId,
+        backendIds: resolvedBackendIds,
+        backendUserId: resolvedBackendUserId,
+        backendUsers: backendUsersList,
+        backendNames: resolvedBackendNames,
+      });
+      setStatus("authenticated");
+    },
+    [persistSession]
+  );
+
+  const clearAuthentication = useCallback(() => {
+    setSessionId(null);
+    setUser(null);
+    setBackendId(null);
+    setBackendIds([]);
+    setBackendUserId(null);
+    setBackendUsers([]);
+    setBackendNames({});
+    clearPersistedSession();
+    setStatus("unauthenticated");
+  }, [clearPersistedSession]);
+
   const login = useCallback(
     async (username: string, password: string) => {
       setIsAuthenticating(true);
@@ -182,7 +260,10 @@ export default function AuthProvider({ children }: PropsWithChildren) {
           body: JSON.stringify({ username, password }),
         });
 
-        const data = await response.json();
+        const data = (await response.json()) as AuthenticatedResponse & {
+          totpRequired?: boolean;
+          error?: unknown;
+        };
 
         if (!response.ok) {
           const message =
@@ -192,79 +273,55 @@ export default function AuthProvider({ children }: PropsWithChildren) {
           throw new Error(message);
         }
 
-        const newSessionId = data?.sessionId as string | undefined;
-        const sessionUser = (data?.user ?? null) as OdooLoginResult | null;
-        const backendMeta = data?.backend as
-          | {
-              backend_id?: number;
-              backend_ids?: number[];
-              user_id?: number;
-              users?: { id: number; name: string; image_url?: string | null }[];
-              backend_names?: Record<number, string>;
-            }
-          | undefined;
-
-        if (!newSessionId) {
-          throw new Error("Missing session id in server response");
+        if (data.totpRequired) {
+          clearAuthentication();
+          return { totpRequired: true };
         }
 
-        setSessionId(newSessionId);
-        setUser(sessionUser);
-        const backendUsersList: BackendUser[] = Array.isArray(
-          backendMeta?.users
-        )
-          ? backendMeta.users.map((user) => ({
-              id: user.id,
-              name: user.name,
-              imageUrl: user.image_url,
-            }))
-          : [];
-        const resolvedBackendId =
-          typeof backendMeta?.backend_id === "number"
-            ? backendMeta?.backend_id
-            : null;
-        const resolvedBackendIds = Array.isArray(backendMeta?.backend_ids)
-          ? backendMeta.backend_ids
-          : [];
-        const resolvedBackendUserId =
-          typeof backendMeta?.user_id === "number"
-            ? backendMeta?.user_id
-            : null;
-        const resolvedBackendNames =
-          backendMeta?.backend_names &&
-          typeof backendMeta.backend_names === "object"
-            ? backendMeta.backend_names
-            : {};
-
-        setBackendId(resolvedBackendId);
-        setBackendIds(resolvedBackendIds);
-        setBackendUserId(resolvedBackendUserId);
-        setBackendUsers(backendUsersList);
-        setBackendNames(resolvedBackendNames);
-        persistSession(newSessionId, sessionUser, {
-          backendId: resolvedBackendId,
-          backendIds: resolvedBackendIds,
-          backendUserId: resolvedBackendUserId,
-          backendUsers: backendUsersList,
-          backendNames: resolvedBackendNames,
-        });
-        setStatus("authenticated");
+        applyAuthenticatedResponse(data);
+        return { totpRequired: false };
       } catch (error) {
-        setSessionId(null);
-        setUser(null);
-        setBackendId(null);
-        setBackendIds([]);
-        setBackendUserId(null);
-        setBackendUsers([]);
-        setBackendNames({});
-        clearPersistedSession();
-        setStatus("unauthenticated");
+        clearAuthentication();
         throw error;
       } finally {
         setIsAuthenticating(false);
       }
     },
-    [persistSession, clearPersistedSession]
+    [applyAuthenticatedResponse, clearAuthentication]
+  );
+
+  const verifyTotp = useCallback(
+    async (code: string) => {
+      setIsAuthenticating(true);
+      try {
+        const response = await fetch("/api/auth/verify-totp", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ code }),
+        });
+        const data = (await response.json()) as AuthenticatedResponse & {
+          error?: unknown;
+        };
+
+        if (!response.ok) {
+          const message =
+            typeof data?.error === "string"
+              ? data.error
+              : "Unable to verify the authentication code";
+          throw new Error(message);
+        }
+
+        applyAuthenticatedResponse(data);
+      } catch (error) {
+        clearAuthentication();
+        throw error;
+      } finally {
+        setIsAuthenticating(false);
+      }
+    },
+    [applyAuthenticatedResponse, clearAuthentication]
   );
 
   const loginWithSessionId = useCallback(
@@ -279,7 +336,10 @@ export default function AuthProvider({ children }: PropsWithChildren) {
           body: JSON.stringify({ sessionId: providedSessionId }),
         });
 
-        const data = await response.json();
+        const data = (await response.json()) as Omit<
+          AuthenticatedResponse,
+          "sessionId"
+        > & { error?: unknown };
 
         if (!response.ok) {
           const message =
@@ -289,87 +349,23 @@ export default function AuthProvider({ children }: PropsWithChildren) {
           throw new Error(message);
         }
 
-        const sessionUser = (data?.user ?? null) as OdooLoginResult | null;
-        const backendMeta = data?.backend as
-          | {
-              backend_id?: number;
-              backend_ids?: number[];
-              user_id?: number;
-              users?: { id: number; name: string; image_url?: string | null }[];
-              backend_names?: Record<number, string>;
-            }
-          | undefined;
-
-        setSessionId(providedSessionId);
-        setUser(sessionUser);
-        const backendUsersList: BackendUser[] = Array.isArray(
-          backendMeta?.users
-        )
-          ? backendMeta.users.map((user) => ({
-              id: user.id,
-              name: user.name,
-              imageUrl: user.image_url,
-            }))
-          : [];
-        const resolvedBackendId =
-          typeof backendMeta?.backend_id === "number"
-            ? backendMeta?.backend_id
-            : null;
-        const resolvedBackendIds = Array.isArray(backendMeta?.backend_ids)
-          ? backendMeta.backend_ids
-          : [];
-        const resolvedBackendUserId =
-          typeof backendMeta?.user_id === "number"
-            ? backendMeta?.user_id
-            : null;
-        const resolvedBackendNames =
-          backendMeta?.backend_names &&
-          typeof backendMeta.backend_names === "object"
-            ? backendMeta.backend_names
-            : {};
-
-        setBackendId(resolvedBackendId);
-        setBackendIds(resolvedBackendIds);
-        setBackendUserId(resolvedBackendUserId);
-        setBackendUsers(backendUsersList);
-        setBackendNames(resolvedBackendNames);
-        persistSession(providedSessionId, sessionUser, {
-          backendId: resolvedBackendId,
-          backendIds: resolvedBackendIds,
-          backendUserId: resolvedBackendUserId,
-          backendUsers: backendUsersList,
-          backendNames: resolvedBackendNames,
+        applyAuthenticatedResponse({
+          ...data,
+          sessionId: providedSessionId,
         });
-        setStatus("authenticated");
       } catch (error) {
-        setSessionId(null);
-        setUser(null);
-        setBackendId(null);
-        setBackendIds([]);
-        setBackendUserId(null);
-        setBackendUsers([]);
-        setBackendNames({});
-        clearPersistedSession();
-        setStatus("unauthenticated");
+        clearAuthentication();
         throw error;
       } finally {
         setIsAuthenticating(false);
       }
     },
-    [persistSession, clearPersistedSession]
+    [applyAuthenticatedResponse, clearAuthentication]
   );
 
   const logout = useCallback(() => {
-    setSessionId(null);
-    setUser(null);
-    setBackendId(null);
-    setBackendIds([]);
-    setBackendUserId(null);
-    setBackendUsers([]);
-    setBackendNames({});
-    clearPersistedSession();
-    setStatus("unauthenticated");
-  }, [clearPersistedSession]);
+    clearAuthentication();
+  }, [clearAuthentication]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -391,6 +387,7 @@ export default function AuthProvider({ children }: PropsWithChildren) {
       isCheckingAuth: status === "checking",
       isAuthenticating,
       login,
+      verifyTotp,
       loginWithSessionId,
       logout,
     }),
@@ -405,6 +402,7 @@ export default function AuthProvider({ children }: PropsWithChildren) {
       status,
       isAuthenticating,
       login,
+      verifyTotp,
       loginWithSessionId,
       logout,
     ]

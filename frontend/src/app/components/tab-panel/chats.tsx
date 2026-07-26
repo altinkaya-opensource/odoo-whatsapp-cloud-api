@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { UsersThreeIcon, MagnifyingGlass, X } from "@phosphor-icons/react";
+import { MagnifyingGlass, X } from "@phosphor-icons/react";
 import { useChats } from "@/app/hooks/use-chats";
 import {
   Chat,
@@ -195,11 +195,12 @@ export default function Chats({ selectedTab }: { selectedTab: string }) {
             showActiveChat();
           }
         }}
-        className={`outline-none grid grid-cols-6 w-full gap-4 p-3 md:p-2.5 hover:bg-[rgb(var(--bg-secondary)/var(--bg-secondary-opacity))] rounded-xl cursor-pointer active:bg-[rgb(var(--bg-secondary)/var(--bg-quaternary-opacity))] transition-colors ${
+        className={`grid w-full grid-cols-6 gap-3 rounded-2xl border border-transparent px-3 py-3 text-left outline-none transition-colors hover:bg-[rgb(var(--bg-secondary))] active:bg-[rgb(var(--bg-tertiary))] ${
           chat.id === currentChatId
-            ? "bg-[rgb(var(--bg-secondary)/var(--bg-secondary-opacity))]"
+            ? "border-[rgb(var(--accent-primary)/0.24)] bg-[rgb(var(--accent-primary)/0.1)]"
             : ""
         }`}
+        aria-current={chat.id === currentChatId ? "page" : undefined}
       >
         <div className="col-span-1">
           {!chat.group ? (
@@ -216,14 +217,12 @@ export default function Chats({ selectedTab }: { selectedTab: string }) {
               seed={chat.partnerId ?? undefined}
             />
           ) : (
-            <Profile size="12">
-              <div className="h-full w-full flex justify-center items-center bg-[rgb(var(--bg-secondary)/0.5)]">
-                <UsersThreeIcon
-                  className="size-7 text-[rgb(var(--text-primary))]"
-                  weight="fill"
-                />
-              </div>
-            </Profile>
+            <Profile
+              size="12"
+              url={chat.groupAvatar || undefined}
+              alt={name}
+              kind="group"
+            />
           )}
         </div>
         <div className="col-span-4 flex flex-col justify-center items-start w-full min-w-0">
@@ -307,11 +306,12 @@ export default function Chats({ selectedTab }: { selectedTab: string }) {
             showActiveChat();
           }
         }}
-        className={`outline-none grid grid-cols-6 w-full gap-4 p-3 md:p-2.5 hover:bg-[rgb(var(--bg-secondary)/var(--bg-secondary-opacity))] rounded-xl cursor-pointer active:bg-[rgb(var(--bg-secondary)/var(--bg-quaternary-opacity))] transition-colors ${
+        className={`grid w-full grid-cols-6 gap-3 rounded-2xl border border-transparent px-3 py-3 text-left outline-none transition-colors hover:bg-[rgb(var(--bg-secondary))] active:bg-[rgb(var(--bg-tertiary))] ${
           threadId === currentChatId
-            ? "bg-[rgb(var(--bg-secondary)/var(--bg-secondary-opacity))]"
+            ? "border-[rgb(var(--accent-primary)/0.24)] bg-[rgb(var(--accent-primary)/0.1)]"
             : ""
         }`}
+        aria-current={threadId === currentChatId ? "page" : undefined}
       >
         <div className="col-span-1">
           <Profile size="12" alt={name} seed={result.partnerId ?? undefined} />
@@ -338,8 +338,20 @@ export default function Chats({ selectedTab }: { selectedTab: string }) {
   const renderChats = () => {
     if (isLoading) {
       return (
-        <div className="w-full h-full flex justify-center items-center text-[rgb(var(--text-secondary)/var(--text-secondary-opacity))]">
-          {t("chat.loading")}
+        <div className="flex w-full flex-col gap-2 px-1 py-2" aria-busy="true">
+          {Array.from({ length: 7 }, (_, index) => (
+            <div
+              className="flex items-center gap-3 rounded-2xl px-2 py-2"
+              key={index}
+            >
+              <div className="size-12 animate-pulse rounded-full bg-[rgb(var(--bg-tertiary))]" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="h-3 w-2/5 animate-pulse rounded-full bg-[rgb(var(--bg-tertiary))]" />
+                <div className="h-2.5 w-4/5 animate-pulse rounded-full bg-[rgb(var(--bg-secondary))]" />
+              </div>
+            </div>
+          ))}
+          <span className="sr-only">{t("chat.loading")}</span>
         </div>
       );
     }
@@ -362,7 +374,7 @@ export default function Chats({ selectedTab }: { selectedTab: string }) {
         <>
           {hasContacts && (
             <>
-              <p className="text-xs font-semibold text-[rgb(var(--text-secondary)/var(--text-secondary-opacity))] uppercase tracking-wider px-1 pt-2 pb-1">
+              <p className="px-2 pb-1 pt-3 text-xs font-semibold text-[rgb(var(--text-secondary))]">
                 {t("chat.searchSectionContacts")}
               </p>
               {filtered.map(renderChat)}
@@ -381,7 +393,7 @@ export default function Chats({ selectedTab }: { selectedTab: string }) {
           )}
           {hasMessages && (
             <>
-              <p className="text-xs font-semibold text-[rgb(var(--text-secondary)/var(--text-secondary-opacity))] uppercase tracking-wider px-1 pt-2 pb-1">
+              <p className="px-2 pb-1 pt-3 text-xs font-semibold text-[rgb(var(--text-secondary))]">
                 {t("chat.searchSectionMessages")}
               </p>
               {messageSearchResults.map(renderMessageResult)}
@@ -412,15 +424,27 @@ export default function Chats({ selectedTab }: { selectedTab: string }) {
   };
 
   return (
-    <section className="w-full h-full min-h-0 flex flex-col gap-3 relative">
-      <section className="w-full flex justify-between items-center px-4 pt-4">
-        <p className="text-[rgb(var(--text-primary))] text-2xl font-semibold capitalize">
-          {t(`navigation.${selectedTab}`)}
-        </p>
+    <section className="relative flex h-full min-h-0 w-full flex-col gap-4">
+      <section className="flex w-full items-center justify-between px-5 pt-5">
+        <div>
+          <p className="text-xl font-semibold tracking-[-0.025em] text-[rgb(var(--text-primary))] capitalize">
+            {t(`navigation.${selectedTab}`)}
+          </p>
+          <p className="mt-1 text-xs text-[rgb(var(--text-secondary))]">
+            {totalUnreadCount > 0
+              ? `${totalUnreadCount} ${t("chat.filters.unread")}`
+              : t("chat.filters.all")}
+          </p>
+        </div>
+        {totalUnreadCount > 0 && (
+          <span className="flex size-8 items-center justify-center rounded-xl bg-[rgb(var(--accent-primary))] text-xs font-bold text-white">
+            {totalUnreadCount > 99 ? "99+" : totalUnreadCount}
+          </span>
+        )}
       </section>
       <BackendSelector />
       {/* Search Input */}
-      <section className="w-full px-4">
+      <section className="w-full px-5">
         <div className="relative">
           <MagnifyingGlass
             className="absolute left-3 top-1/2 transform -translate-y-1/2 size-5 text-[rgb(var(--text-secondary)/var(--text-secondary-opacity))]"
@@ -431,12 +455,14 @@ export default function Chats({ selectedTab }: { selectedTab: string }) {
             value={searchQuery}
             onChange={(e) => updateSearchQuery(e.target.value)}
             placeholder={t("chat.searchPlaceholder")}
-            className="w-full pl-10 pr-10 py-2.5 bg-[rgb(var(--bg-input)/var(--bg-input-opacity))] border border-[rgb(var(--border-primary)/var(--border-primary-opacity))] rounded-lg text-[rgb(var(--text-primary))] placeholder-[rgb(var(--text-secondary)/var(--text-secondary-opacity))] focus:outline-none focus:border-[rgb(var(--accent-primary))] transition-colors"
+            className="control-field w-full py-3 pl-10 pr-10 text-sm placeholder-[rgb(var(--text-secondary)/var(--text-quaternary-opacity))]"
+            aria-label={t("chat.searchPlaceholder")}
           />
           {searchQuery.length > 0 && (
             <button
               onClick={clearSearch}
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 p-1 hover:bg-[rgb(var(--bg-secondary)/var(--bg-secondary-opacity))] rounded-full transition-colors"
+              className="icon-action absolute right-2 top-1/2 size-8 -translate-y-1/2"
+              type="button"
             >
               <X
                 className="size-4 text-[rgb(var(--text-secondary)/var(--text-secondary-opacity))]"
@@ -446,17 +472,18 @@ export default function Chats({ selectedTab }: { selectedTab: string }) {
           )}
         </div>
       </section>
-      <section className="w-full flex flex-col gap-1 px-4">
-        <div className="flex justify-start items-center text-[rgb(var(--text-primary))] gap-2">
+      <section className="flex w-full flex-col gap-1 px-5">
+        <div className="flex items-center gap-1 rounded-xl border border-[rgb(var(--border-primary)/var(--border-primary-opacity))] bg-[rgb(var(--bg-secondary))] p-1 text-[rgb(var(--text-primary))]">
           {[Filters.ALL, Filters.UNREAD].map((f: string) => (
             <button
               key={f}
               className={`${
                 f === filter
-                  ? "bg-[rgb(var(--accent-primary)/0.3)] text-[rgb(var(--text-primary))] border-[rgb(var(--accent-primary)/0.3)]"
-                  : "border-[rgb(var(--border-primary)/var(--border-primary-opacity))] hover:bg-[rgb(var(--bg-secondary)/var(--bg-secondary-opacity))]"
-              } text-sm p-2 px-4 md:p-1 md:px-3 border-[1px] rounded-full cursor-pointer capitalize active:bg-[rgb(var(--bg-secondary)/var(--bg-quaternary-opacity))] transition-colors`}
+                  ? "bg-[rgb(var(--bg-card))] text-[rgb(var(--accent-primary))] shadow-sm"
+                  : "text-[rgb(var(--text-secondary))] hover:text-[rgb(var(--text-primary))]"
+              } rounded-lg px-3 py-2 text-sm font-semibold capitalize transition-colors`}
               onClick={() => updateFilter(f)}
+              type="button"
             >
               {t(`chat.filters.${f}`)}
             </button>
@@ -466,9 +493,10 @@ export default function Chats({ selectedTab }: { selectedTab: string }) {
             <button
               onClick={handleMarkAllRead}
               disabled={isMarkingAllRead}
-              className={`text-sm p-2 px-4 md:p-1 md:px-3 border-[1px] rounded-full cursor-pointer transition-colors capitalize border-[rgb(var(--border-primary)/var(--border-primary-opacity))] hover:bg-[rgb(var(--bg-secondary)/var(--bg-secondary-opacity))] active:bg-[rgb(var(--bg-secondary)/var(--bg-quaternary-opacity))] text-[rgb(var(--text-primary))] ${
+              className={`ml-auto rounded-lg px-3 py-2 text-sm font-semibold capitalize text-[rgb(var(--text-secondary))] transition-colors hover:bg-[rgb(var(--bg-card))] hover:text-[rgb(var(--accent-primary))] ${
                 isMarkingAllRead ? "opacity-50 cursor-wait" : ""
               }`}
+              type="button"
             >
               {isMarkingAllRead ? t("chat.loading") : t("chat.filters.readAll")}
             </button>
@@ -477,7 +505,7 @@ export default function Chats({ selectedTab }: { selectedTab: string }) {
       </section>
       <section
         ref={scrollContainerRef}
-        className="w-full flex-1 min-h-0 overflow-y-auto custom-scrollbar flex flex-col gap-1 px-4 pb-4"
+        className="custom-scrollbar flex w-full min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-3 pb-5"
       >
         {renderChats()}
         {hasMoreThreads && searchQuery.length === 0 && (

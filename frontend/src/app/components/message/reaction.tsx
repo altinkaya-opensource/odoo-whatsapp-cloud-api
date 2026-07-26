@@ -6,9 +6,10 @@ import {
 } from "@phosphor-icons/react";
 import { MouseEvent, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
+import { useTranslations } from "@/app/context/translation-provider";
 
 const item = {
-  hidden: { opacity: 0, scale: 0 },
+  hidden: { opacity: 0, scale: 0.9 },
   show: { opacity: 1, scale: 1 },
 };
 
@@ -31,42 +32,36 @@ export default function Reaction({
   isTranslating = false,
   isTranslated = false,
 }: ReactionProps) {
-  const [showReactionEmoji, setShowReactionEmoji] = useState(false);
+  const { t } = useTranslations();
   const [reactionMenuOpen, setReactionMenuOpen] = useState(false);
   const popupRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent | globalThis.MouseEvent) => {
+    if (!reactionMenuOpen) {
+      return;
+    }
+
+    const handleClickOutside = (event: globalThis.MouseEvent) => {
       if (
-        reactionMenuOpen &&
         popupRef.current &&
         !popupRef.current.contains(event.target as Node)
       ) {
         setReactionMenuOpen(false);
-        setShowReactionEmoji(false);
+      }
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setReactionMenuOpen(false);
       }
     };
 
-    if (reactionMenuOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleEscape);
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEscape);
     };
   }, [reactionMenuOpen]);
-
-  const handleMouseLeave = () => {
-    setShowReactionEmoji(false || reactionMenuOpen);
-  };
-
-  const handleMouseOver = () => {
-    setShowReactionEmoji(true);
-  };
-
-  const handleEmojiClick = () => {
-    setReactionMenuOpen((prev) => !prev);
-  };
 
   const handleReplyClick = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
@@ -79,80 +74,30 @@ export default function Reaction({
   };
 
   const handleReactionClick = (
-    event: MouseEvent<HTMLParagraphElement>,
+    event: MouseEvent<HTMLButtonElement>,
     emoji: string
   ) => {
     event.stopPropagation();
     onReaction?.(emoji);
     setReactionMenuOpen(false);
-    setShowReactionEmoji(false);
-  };
-
-  const renderReactionMenu = () => {
-    return (
-      <AnimatePresence>
-        <motion.div
-          initial="hidden"
-          animate="show"
-          variants={{
-            hidden: { scale: 0.8 },
-            show: {
-              scale: 1,
-              transition: { type: "spring", bounce: 0.3, duration: 0.2 },
-            },
-          }}
-          className={`overflow-visible rounded-full absolute z-50 -top-16 ${
-            isSentFromUser ? "right-0" : "left-0"
-          }`}
-        >
-          <motion.div
-            variants={{
-              hidden: { opacity: 0 },
-              show: {
-                opacity: 1,
-                transition: {
-                  type: "spring",
-                  staggerChildren: 0.02,
-                  staggerDirection: isSentFromUser ? -1 : 1,
-                  bounce: 0.3,
-                  duration: 0.02,
-                },
-              },
-            }}
-            initial="hidden"
-            animate="show"
-            className="bg-black/20 backdrop-blur-sm text-[rgb(var(--text-primary))] flex w-auto justify-between items-center gap-1 sm:gap-2 p-1.5 sm:p-2 px-2 sm:px-4 max-w-[90vw] overflow-x-auto rounded-full border border-white/10"
-          >
-            {reactions.map((reaction: string, index) => (
-              <motion.p
-                variants={item}
-                className="text-xl sm:text-2xl md:text-3xl cursor-pointer hover:scale-125 transition-transform flex-shrink-0"
-                key={index}
-                onClick={(e) => handleReactionClick(e, reaction)}
-              >
-                {reaction}
-              </motion.p>
-            ))}
-          </motion.div>
-        </motion.div>
-      </AnimatePresence>
-    );
   };
 
   return (
     <div
       ref={popupRef}
-      className={`relative flex flex-col justify-center items-center gap-2 ${
-        showReactionEmoji ? "opacity-100" : "opacity-0"
+      className={`relative flex flex-col items-center justify-center gap-1 transition-opacity ${
+        reactionMenuOpen
+          ? "opacity-100"
+          : "opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-within:opacity-100"
       }`}
-      onMouseOver={handleMouseOver}
-      onMouseLeave={handleMouseLeave}
     >
       {onReply && (
         <button
           type="button"
-          className="text-[rgb(var(--text-secondary)/var(--text-tertiary-opacity))] hover:text-[rgb(var(--text-primary))] transition"
+          className="icon-action size-8"
           onClick={handleReplyClick}
+          title={t("chat.reply")}
+          aria-label={t("chat.reply")}
         >
           <ArrowBendUpLeftIcon className="size-4" weight="bold" />
         </button>
@@ -160,13 +105,13 @@ export default function Reaction({
       {onTranslate && (
         <button
           type="button"
-          className={`transition ${
-            isTranslated
-              ? "text-[rgb(var(--accent-primary))]"
-              : "text-[rgb(var(--text-secondary)/var(--text-tertiary-opacity))] hover:text-[rgb(var(--text-primary))]"
+          className={`icon-action size-8 ${
+            isTranslated ? "text-[rgb(var(--accent-primary))]" : ""
           }`}
           onClick={handleTranslateClick}
           disabled={isTranslating}
+          title={t("chatInput.translate")}
+          aria-label={t("chatInput.translate")}
         >
           {isTranslating ? (
             <SpinnerGapIcon className="size-4 animate-spin" weight="bold" />
@@ -178,12 +123,69 @@ export default function Reaction({
           )}
         </button>
       )}
-      {reactionMenuOpen && renderReactionMenu()}
-      <SmileyIcon
-        weight="regular"
-        className="size-5 text-[rgb(var(--text-secondary)/var(--text-tertiary-opacity))] cursor-pointer"
-        onClick={handleEmojiClick}
-      />
+      <button
+        type="button"
+        className="icon-action size-8"
+        onClick={() => setReactionMenuOpen((previous) => !previous)}
+        title={t("chat.addReaction")}
+        aria-label={t("chat.addReaction")}
+        aria-expanded={reactionMenuOpen}
+      >
+        <SmileyIcon className="size-4" weight="regular" />
+      </button>
+
+      <AnimatePresence>
+        {reactionMenuOpen && (
+          <motion.div
+            initial="hidden"
+            animate="show"
+            exit="hidden"
+            variants={{
+              hidden: { opacity: 0, scale: 0.94 },
+              show: {
+                opacity: 1,
+                scale: 1,
+                transition: { type: "spring", bounce: 0.2, duration: 0.2 },
+              },
+            }}
+            className={`absolute z-50 -top-14 ${
+              isSentFromUser ? "right-0" : "left-0"
+            }`}
+            role="menu"
+            aria-label={t("chat.addReaction")}
+          >
+            <motion.div
+              variants={{
+                hidden: { opacity: 0 },
+                show: {
+                  opacity: 1,
+                  transition: {
+                    staggerChildren: 0.02,
+                    staggerDirection: isSentFromUser ? -1 : 1,
+                  },
+                },
+              }}
+              initial="hidden"
+              animate="show"
+              className="surface-card flex max-w-[90vw] items-center gap-1 overflow-x-auto rounded-2xl p-1.5"
+            >
+              {reactions.map((reaction) => (
+                <motion.button
+                  variants={item}
+                  className="flex size-9 shrink-0 items-center justify-center rounded-xl text-xl transition-transform hover:scale-110 focus-visible:outline-offset-0"
+                  key={reaction}
+                  onClick={(event) => handleReactionClick(event, reaction)}
+                  type="button"
+                  role="menuitem"
+                  aria-label={reaction}
+                >
+                  {reaction}
+                </motion.button>
+              ))}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -25,9 +25,17 @@ export default function BackendSelector() {
     };
 
     if (isOpen) {
+      const handleEscape = (event: KeyboardEvent) => {
+        if (event.key === "Escape") {
+          setIsOpen(false);
+        }
+      };
+
       document.addEventListener("mousedown", handleClickOutside);
+      document.addEventListener("keydown", handleEscape);
       return () => {
         document.removeEventListener("mousedown", handleClickOutside);
+        document.removeEventListener("keydown", handleEscape);
       };
     }
   }, [isOpen]);
@@ -50,8 +58,8 @@ export default function BackendSelector() {
   }
 
   return (
-    <div className="w-full flex flex-col gap-2 px-4" ref={dropdownRef}>
-      <label className="text-xs text-[rgb(var(--text-secondary)/var(--text-secondary-opacity))] font-medium uppercase">
+    <div className="flex w-full flex-col gap-2 px-5" ref={dropdownRef}>
+      <label className="text-xs font-semibold text-[rgb(var(--text-secondary))]">
         {t("chat.backendSelector.selectBackend")}
       </label>
 
@@ -60,7 +68,9 @@ export default function BackendSelector() {
         <button
           type="button"
           onClick={() => setIsOpen(!isOpen)}
-          className="w-full px-3 py-2.5 bg-[rgb(var(--bg-secondary)/var(--bg-secondary-opacity))] border border-[rgb(var(--border-primary)/var(--border-primary-opacity))] rounded-lg text-[rgb(var(--text-primary))] text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[rgb(var(--accent-primary)/0.5)] focus:border-[rgb(var(--accent-primary))] hover:bg-[rgb(var(--accent-hover)/var(--accent-hover-opacity))] transition-all cursor-pointer flex items-center justify-between"
+          className="control-field flex w-full items-center justify-between px-3.5 py-3 text-sm font-semibold"
+          aria-expanded={isOpen}
+          aria-haspopup="listbox"
         >
           <span>{getDisplayName()}</span>
           <CaretDown
@@ -73,12 +83,18 @@ export default function BackendSelector() {
 
         {/* Dropdown Menu */}
         {isOpen && (
-          <div className="absolute z-50 w-full mt-1 bg-[rgb(var(--bg-primary))] border border-[rgb(var(--border-primary)/var(--border-primary-opacity))] rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar backdrop-blur-sm">
+          <div
+            className="surface-card custom-scrollbar absolute z-50 mt-2 max-h-60 w-full overflow-y-auto rounded-xl p-1"
+            role="listbox"
+            aria-label={t("chat.backendSelector.selectBackend")}
+          >
             {/* All Backends Option */}
             <button
               type="button"
               onClick={() => handleSelect(null)}
-              className="w-full px-3 py-2.5 text-left text-sm text-[rgb(var(--text-primary))] hover:bg-[rgb(var(--accent-hover)/var(--accent-hover-opacity))] transition-colors flex items-center justify-between"
+              className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm text-[rgb(var(--text-primary))] transition-colors hover:bg-[rgb(var(--accent-hover)/var(--accent-hover-opacity))]"
+              role="option"
+              aria-selected={selectedBackendId === null}
             >
               <span>{t("chat.backendSelector.allBackends")}</span>
               {selectedBackendId === null && (
@@ -100,7 +116,9 @@ export default function BackendSelector() {
                   key={backendId}
                   type="button"
                   onClick={() => handleSelect(backendId)}
-                  className="w-full px-3 py-2.5 text-left text-sm text-[rgb(var(--text-primary))] hover:bg-[rgb(var(--accent-hover)/var(--accent-hover-opacity))] transition-colors flex items-center justify-between"
+                  className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm text-[rgb(var(--text-primary))] transition-colors hover:bg-[rgb(var(--accent-hover)/var(--accent-hover-opacity))]"
+                  role="option"
+                  aria-selected={isSelected}
                 >
                   <span>{displayName}</span>
                   {isSelected && (

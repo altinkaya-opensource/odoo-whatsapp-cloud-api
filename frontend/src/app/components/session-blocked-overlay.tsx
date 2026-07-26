@@ -7,19 +7,19 @@ export default function SessionBlockedOverlay() {
   const { t } = useTranslations();
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-[rgb(var(--bg-primary))]">
-      <div className="flex max-w-md flex-col items-center gap-6 px-8 text-center">
+    <div className="app-shell fixed inset-0 z-[9999] flex items-center justify-center p-4">
+      <div className="surface-card flex w-full max-w-md flex-col items-center gap-6 rounded-2xl px-8 py-10 text-center">
         {/* Icon */}
-        <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[rgb(var(--bg-secondary)/var(--bg-secondary-opacity))]">
+        <div className="flex size-20 items-center justify-center rounded-2xl bg-[rgb(var(--accent-primary)/0.12)]">
           <ComputerTower
             size={48}
             weight="fill"
-            className="text-[rgb(var(--text-secondary)/var(--text-secondary-opacity))]"
+            className="text-[rgb(var(--accent-primary))]"
           />
         </div>
 
         {/* Title */}
-        <h1 className="text-2xl font-semibold text-[rgb(var(--text-primary))]">
+        <h1 className="text-2xl font-semibold tracking-[-0.025em] text-[rgb(var(--text-primary))]">
           {t("sessionSync.blocked.title")}
         </h1>
 

@@ -1,63 +1,53 @@
-/**
- * Avatar Color Generation System
- *
- * Generates deterministic, theme-aware colors for avatar backgrounds
- * based on a numeric seed (partnerId or threadId).
- */
+export type AvatarSeed = number | string;
 
-/**
- * Simple hash function to convert a numeric seed into a consistent hash value
- * @param seed - Numeric identifier (partnerId, threadId, etc.)
- * @returns Hash value between 0 and 1
- */
-function hashSeed(seed: number): number {
-  // Use a simple but effective hash algorithm
-  let hash = seed;
+type AvatarColor = {
+  background: string;
+  foreground: string;
+};
 
-  // Mix the bits around for better distribution
-  hash = ((hash >> 16) ^ hash) * 0x45d9f3b;
-  hash = ((hash >> 16) ^ hash) * 0x45d9f3b;
-  hash = (hash >> 16) ^ hash;
+const DARK_AVATAR_COLORS: AvatarColor[] = [
+  { background: "hsl(214 25% 29%)", foreground: "hsl(210 40% 96%)" },
+  { background: "hsl(163 27% 27%)", foreground: "hsl(156 42% 95%)" },
+  { background: "hsl(33 28% 30%)", foreground: "hsl(42 54% 96%)" },
+  { background: "hsl(278 21% 31%)", foreground: "hsl(276 36% 96%)" },
+  { background: "hsl(4 27% 31%)", foreground: "hsl(10 46% 96%)" },
+  { background: "hsl(196 24% 28%)", foreground: "hsl(195 43% 96%)" },
+];
 
-  // Convert to 0-1 range
-  return Math.abs(hash % 10000) / 10000;
+const LIGHT_AVATAR_COLORS: AvatarColor[] = [
+  { background: "hsl(214 40% 87%)", foreground: "hsl(215 35% 20%)" },
+  { background: "hsl(163 35% 85%)", foreground: "hsl(163 38% 18%)" },
+  { background: "hsl(38 44% 86%)", foreground: "hsl(31 41% 19%)" },
+  { background: "hsl(278 31% 88%)", foreground: "hsl(278 30% 21%)" },
+  { background: "hsl(5 39% 87%)", foreground: "hsl(5 39% 21%)" },
+  { background: "hsl(196 37% 86%)", foreground: "hsl(198 37% 19%)" },
+];
+
+function hashSeed(seed: AvatarSeed): number {
+  return Array.from(String(seed)).reduce(
+    (hash, character) => ((hash << 5) - hash + character.codePointAt(0)!) | 0,
+    0
+  );
 }
 
 /**
- * Generates a deterministic HSL color string based on seed and theme
- *
- * @param seed - Numeric identifier (partnerId or threadId)
- * @param theme - Current theme ('dark' or 'light')
- * @returns HSL color string (e.g., "hsl(240, 70%, 60%)")
- *
- * Color characteristics:
- * - Dark theme: Saturated, rich colors (60-80% saturation, 50-70% lightness)
- * - Light theme: Pale, pastel colors (40-60% saturation, 75-85% lightness)
- * - Hue: Full spectrum (0-360°) for maximum variety
+ * Creates a stable, quiet identity color for a missing person photo. The pair
+ * is deliberately flat so initials stay legible at every avatar size.
  */
+export function getAvatarColors(
+  seed: AvatarSeed,
+  theme: "dark" | "light"
+): AvatarColor {
+  const palette = theme === "dark" ? DARK_AVATAR_COLORS : LIGHT_AVATAR_COLORS;
+  const colorIndex = Math.abs(hashSeed(seed)) % palette.length;
+
+  return palette[colorIndex] ?? palette[0]!;
+}
+
+/** Kept for callers that only need the background color. */
 export function generateAvatarColor(
-  seed: number,
+  seed: AvatarSeed,
   theme: "dark" | "light"
 ): string {
-  // Generate a consistent hash from the seed
-  const hash = hashSeed(seed);
-
-  // Generate hue from full spectrum (0-360 degrees)
-  const hue = Math.floor(hash * 360);
-
-  // Theme-specific saturation and lightness
-  let saturation: number;
-  let lightness: number;
-
-  if (theme === "dark") {
-    // Dark theme: vibrant, saturated colors
-    saturation = 60 + Math.floor((hash * 1000) % 20); // 60-80%
-    lightness = 50 + Math.floor((hash * 2000) % 20); // 50-70%
-  } else {
-    // Light theme: pale, pastel colors
-    saturation = 40 + Math.floor((hash * 1500) % 20); // 40-60%
-    lightness = 75 + Math.floor((hash * 2500) % 10); // 75-85%
-  }
-
-  return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+  return getAvatarColors(seed, theme).background;
 }

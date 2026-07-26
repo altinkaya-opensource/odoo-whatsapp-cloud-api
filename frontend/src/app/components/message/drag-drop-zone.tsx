@@ -2,6 +2,7 @@
 
 import { useState, useCallback, DragEvent, ReactNode, useRef } from "react";
 import { Upload } from "@phosphor-icons/react";
+import { useTranslations } from "@/app/context/translation-provider";
 
 type DragDropZoneProps = {
   onFilesDrop: (files: File[]) => void;
@@ -16,6 +17,7 @@ export default function DragDropZone({
   children,
   disabled,
 }: DragDropZoneProps) {
+  const { t } = useTranslations();
   const [isDragging, setIsDragging] = useState(false);
   const dragCounterRef = useRef(0);
 
@@ -119,20 +121,20 @@ export default function DragDropZone({
 
       {/* Drag overlay */}
       {isDragging && (
-        <div className="absolute inset-0 bg-[rgb(var(--bg-primary)/0.8)] backdrop-blur-sm flex items-center justify-center z-[9999] pointer-events-none">
-          <div className="bg-[rgb(var(--accent-primary)/0.2)] border-2 border-[rgb(var(--accent-primary))] border-dashed rounded-2xl p-12 flex flex-col items-center gap-4">
-            <div className="bg-[rgb(var(--accent-primary)/0.3)] rounded-full p-6">
+        <div className="absolute inset-0 z-[9999] flex items-center justify-center bg-[rgb(var(--bg-overlay)/0.66)] p-6 backdrop-blur-sm pointer-events-none">
+          <div className="flex flex-col items-center gap-4 rounded-2xl border-2 border-dashed border-[rgb(var(--accent-primary))] bg-[rgb(var(--bg-card))] p-10 shadow-2xl">
+            <div className="rounded-2xl bg-[rgb(var(--accent-primary)/0.14)] p-5">
               <Upload
                 className="size-16 text-[rgb(var(--accent-primary))]"
                 weight="bold"
               />
             </div>
             <div className="text-center">
-              <p className="text-[rgb(var(--text-primary))] text-xl font-semibold mb-2">
-                Drop files here
+              <p className="mb-2 text-xl font-semibold text-[rgb(var(--text-primary))]">
+                {t("attachment.dropTitle")}
               </p>
-              <p className="text-[rgb(var(--text-secondary)/var(--text-secondary-opacity))] text-sm">
-                Images, videos, documents up to 16MB
+              <p className="text-sm text-[rgb(var(--text-secondary))]">
+                {t("attachment.dropDescription")}
               </p>
             </div>
           </div>

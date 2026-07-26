@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useRef, ChangeEvent, useEffect } from "react";
+import { useState, useRef, ChangeEvent, useCallback, useEffect } from "react";
 import { Paperclip, X, File } from "@phosphor-icons/react";
+import { useTranslations } from "@/app/context/translation-provider";
 
 type AttachmentPickerProps = {
   onAttachmentSelect: (file: File, caption: string) => void;
@@ -26,11 +27,41 @@ export default function AttachmentPicker({
   externalFile,
   onExternalFileProcessed,
 }: AttachmentPickerProps) {
+  const { t } = useTranslations();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [caption, setCaption] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileSelection = useCallback(
+    (file: File) => {
+      setError(null);
+
+      // Validate file size
+      if (file.size > MAX_FILE_SIZE) {
+        setError(
+          t("attachment.fileSizeError", {
+            size: formatFileSize(MAX_FILE_SIZE),
+          })
+        );
+        return;
+      }
+
+      setSelectedFile(file);
+
+      // Create preview for images
+      setPreviewUrl((currentPreviewUrl) => {
+        if (currentPreviewUrl) {
+          URL.revokeObjectURL(currentPreviewUrl);
+        }
+        return file.type.startsWith("image/")
+          ? URL.createObjectURL(file)
+          : null;
+      });
+    },
+    [t]
+  );
 
   // Handle external file from drag and drop
   useEffect(() => {
@@ -38,27 +69,7 @@ export default function AttachmentPicker({
       handleFileSelection(externalFile);
       onExternalFileProcessed?.();
     }
-  }, [externalFile, onExternalFileProcessed]);
-
-  const handleFileSelection = (file: File) => {
-    setError(null);
-
-    // Validate file size
-    if (file.size > MAX_FILE_SIZE) {
-      setError(`File size must be less than ${formatFileSize(MAX_FILE_SIZE)}`);
-      return;
-    }
-
-    setSelectedFile(file);
-
-    // Create preview for images
-    if (file.type.startsWith("image/")) {
-      const url = URL.createObjectURL(file);
-      setPreviewUrl(url);
-    } else {
-      setPreviewUrl(null);
-    }
-  };
+  }, [externalFile, handleFileSelection, onExternalFileProcessed]);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -70,7 +81,7 @@ export default function AttachmentPicker({
     handleFileSelection(file);
   };
 
-  const handleCancel = () => {
+  const handleCancel = useCallback(() => {
     setSelectedFile(null);
     setCaption("");
     setError(null);
@@ -81,7 +92,7 @@ export default function AttachmentPicker({
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
-  };
+  }, [previewUrl]);
 
   const handleSend = () => {
     if (!selectedFile) {
@@ -96,6 +107,21 @@ export default function AttachmentPicker({
     fileInputRef.current?.click();
   };
 
+  useEffect(() => {
+    if (!selectedFile) {
+      return;
+    }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        handleCancel();
+      }
+    };
+
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [handleCancel, selectedFile]);
+
   return (
     <div className="relative ms-2">
       {/* Hidden file input */}
@@ -108,14 +134,24 @@ export default function AttachmentPicker({
         disabled={disabled}
       />
 
+      {!selectedFile && error && (
+        <p
+          className="absolute bottom-full left-0 z-20 mb-2 min-w-52 rounded-lg border border-[rgb(var(--status-error)/0.35)] bg-[rgb(var(--bg-card))] px-3 py-2 text-xs text-[rgb(var(--status-error))] shadow-lg"
+          role="alert"
+        >
+          {error}
+        </p>
+      )}
+
       {/* Attachment button */}
       {!selectedFile && (
         <button
           type="button"
           onClick={handleButtonClick}
           disabled={disabled}
-          className="text-[rgb(var(--text-secondary))] hover:text-[rgb(var(--accent-primary))] disabled:opacity-50 disabled:cursor-not-allowed transition-colors p-2 mb-1"
-          title="Attach file"
+          className="icon-action mb-1 size-10 disabled:cursor-not-allowed disabled:opacity-50"
+          title={t("attachment.attach")}
+          aria-label={t("attachment.attach")}
         >
           <Paperclip className="size-5 md:size-5" weight="bold" />
         </button>
@@ -124,18 +160,28 @@ export default function AttachmentPicker({
       {/* Preview modal */}
       {selectedFile && (
         <div
-          className="fixed inset-0 bg-[rgb(var(--bg-overlay)/var(--bg-overlay-opacity))] flex items-center justify-center p-4"
+          className="fixed inset-0 flex items-center justify-center bg-[rgb(var(--bg-overlay)/var(--bg-overlay-opacity))] p-4 backdrop-blur-sm"
           style={{ zIndex: 10000 }}
         >
-          <div className="bg-[rgb(var(--bg-primary))] rounded-lg max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+          <div
+            className="surface-card flex max-h-[90dvh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="attachment-picker-title"
+          >
             {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b border-[rgb(var(--border-primary)/var(--border-primary-opacity))]">
-              <h3 className="text-[rgb(var(--text-primary))] font-semibold">
-                Send Attachment
+            <div className="flex items-center justify-between border-b border-[rgb(var(--border-primary)/var(--border-primary-opacity))] p-4">
+              <h3
+                id="attachment-picker-title"
+                className="font-semibold text-[rgb(var(--text-primary))]"
+              >
+                {t("attachment.title")}
               </h3>
               <button
+                type="button"
                 onClick={handleCancel}
-                className="text-[rgb(var(--text-secondary))] hover:text-[rgb(var(--text-primary))]"
+                className="icon-action size-9"
+                aria-label={t("attachment.cancel")}
               >
                 <X className="size-6" weight="bold" />
               </button>
@@ -144,7 +190,10 @@ export default function AttachmentPicker({
             {/* Preview area */}
             <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
               {error && (
-                <div className="bg-[rgb(var(--status-error)/0.2)] border border-[rgb(var(--status-error))] text-[rgb(var(--status-error))] px-4 py-2 rounded mb-4">
+                <div
+                  className="mb-4 rounded-xl border border-[rgb(var(--status-error)/0.35)] bg-[rgb(var(--status-error)/0.1)] px-4 py-3 text-[rgb(var(--status-error))]"
+                  role="alert"
+                >
                   {error}
                 </div>
               )}
@@ -155,11 +204,11 @@ export default function AttachmentPicker({
                   <img
                     src={previewUrl}
                     alt={selectedFile.name}
-                    className="max-h-96 object-contain rounded"
+                    className="max-h-96 rounded-xl object-contain"
                   />
                 </div>
               ) : (
-                <div className="flex items-center gap-3 bg-[rgb(var(--bg-secondary)/var(--bg-secondary-opacity))] rounded-lg p-4 mb-4">
+                <div className="mb-4 flex items-center gap-3 rounded-xl bg-[rgb(var(--bg-secondary))] p-4">
                   <File
                     className="size-12 text-[rgb(var(--text-secondary))]"
                     weight="fill"
@@ -177,33 +226,35 @@ export default function AttachmentPicker({
 
               {/* Caption input */}
               <div>
-                <label className="text-[rgb(var(--text-secondary)/var(--text-tertiary-opacity))] text-sm mb-2 block">
-                  Caption (optional)
+                <label className="mb-2 block text-sm font-semibold text-[rgb(var(--text-primary))]">
+                  {t("attachment.caption")}
                 </label>
                 <textarea
                   value={caption}
                   onChange={(e) => setCaption(e.target.value)}
-                  placeholder="Add a caption..."
-                  className="w-full bg-[rgb(var(--bg-input)/var(--bg-input-opacity))] text-[rgb(var(--text-primary))] placeholder-[rgb(var(--text-secondary))] border border-[rgb(var(--border-primary)/var(--border-primary-opacity))] rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-[rgb(var(--accent-primary))] resize-none"
+                  placeholder={t("attachment.captionPlaceholder")}
+                  className="control-field w-full resize-none p-3 placeholder-[rgb(var(--text-secondary)/var(--text-quaternary-opacity))]"
                   rows={3}
                 />
               </div>
             </div>
 
             {/* Footer */}
-            <div className="flex items-center justify-end gap-3 p-4 border-t border-[rgb(var(--border-primary)/var(--border-primary-opacity))]">
+            <div className="flex items-center justify-end gap-3 border-t border-[rgb(var(--border-primary)/var(--border-primary-opacity))] p-4">
               <button
+                type="button"
                 onClick={handleCancel}
-                className="px-4 py-2 text-[rgb(var(--text-secondary))] hover:text-[rgb(var(--text-primary))] transition"
+                className="secondary-action px-4 py-2 text-sm font-semibold"
               >
-                Cancel
+                {t("attachment.cancel")}
               </button>
               <button
+                type="button"
                 onClick={handleSend}
-                className="px-6 py-2 bg-[rgb(var(--accent-primary))] hover:bg-[rgb(var(--status-success))] text-white rounded-lg font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
+                className="primary-action px-5 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={!!error}
               >
-                Send
+                {t("attachment.send")}
               </button>
             </div>
           </div>

@@ -140,7 +140,7 @@ function renderSegment(segment: TextSegment, key: number): ReactNode {
           href={segment.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-[rgb(var(--accent-primary))] hover:underline"
+          className="message-link text-[rgb(var(--accent-primary))] hover:underline"
         >
           {segment.content}
         </a>

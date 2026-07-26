@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { OdooClient } from "@/app/lib/odoo/jsonrpc";
 import { sessionCache } from "@/app/lib/session-cache";
+import {
+  clearPendingTotpCookie,
+  setPendingTotpCookie,
+} from "@/app/lib/pending-totp";
 
 const REQUIRED_ENV_VARS = [
   "ODOO_JSONRPC_HOST",
@@ -63,6 +67,22 @@ export async function POST(request: Request) {
       password,
     });
 
+    // Odoo deliberately returns uid: null after a correct password when
+    // TOTP is enabled. Keep that partial session server-side until the code
+    // is verified; it is not an authenticated WhatsApp session yet.
+    if (result.uid === null) {
+      const response = NextResponse.json({ totpRequired: true });
+      setPendingTotpCookie(response, sessionId);
+      return response;
+    }
+
+    if (typeof result.uid !== "number" || result.uid <= 0) {
+      return NextResponse.json(
+        { error: "Unable to complete sign-in with Odoo" },
+        { status: 500 }
+      );
+    }
+
     let backend = null;
     try {
       backend = await session.call<{
@@ -87,11 +107,13 @@ export async function POST(request: Request) {
       // Failed to initialize WhatsApp backend - not critical for login
     }
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       sessionId,
       user: result,
       backend,
     });
+    clearPendingTotpCookie(response);
+    return response;
   } catch (error) {
     const err = error as Error & {
       code?: number;

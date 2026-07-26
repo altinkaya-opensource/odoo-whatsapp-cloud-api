@@ -18,67 +18,55 @@ export default function SuggestionChips({
   disabled = false,
 }: SuggestionChipsProps) {
   const { t } = useTranslations();
+  const filteredSuggestions = suggestions.filter(
+    (suggestion) => suggestion !== "NO_RESPONSE"
+  );
 
-  // Filter out "NO_RESPONSE" suggestions (fallback in case API didn't filter)
-  const filteredSuggestions = suggestions.filter((s) => s !== "NO_RESPONSE");
-
-  // Don't render if no suggestions and not loading
   if (!isLoading && filteredSuggestions.length === 0) {
     return null;
   }
 
   return (
-    <div className="flex flex-col gap-1 mb-2">
+    <section className="mb-3 rounded-xl border border-[rgb(var(--border-primary)/var(--border-primary-opacity))] bg-[rgb(var(--bg-secondary))] p-2.5">
+      <header className="mb-2 flex items-center justify-between gap-3 px-1">
+        <p className="text-xs font-semibold text-[rgb(var(--text-secondary))]">
+          {t("chatInput.suggestedReplies")}
+        </p>
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={disabled || isLoading}
+          className="icon-action size-8 disabled:cursor-not-allowed disabled:opacity-50"
+          title={t("chatInput.refreshSuggestions")}
+          aria-label={t("chatInput.refreshSuggestions")}
+        >
+          <ArrowsClockwise
+            className={`size-4 ${isLoading ? "animate-spin" : ""}`}
+            weight="bold"
+          />
+        </button>
+      </header>
+
       {isLoading ? (
-        // Loading skeleton row
-        <div
-          className="w-full px-3 py-1.5 rounded-lg animate-pulse
-            bg-[rgb(var(--bg-secondary)/var(--bg-secondary-opacity))]
-            h-8"
-        />
+        <div className="space-y-2" aria-busy="true">
+          <div className="h-9 w-full animate-pulse rounded-lg bg-[rgb(var(--bg-tertiary))]" />
+          <span className="sr-only">{t("chatInput.suggestionsLoading")}</span>
+        </div>
       ) : (
-        // Suggestion rows
-        <>
+        <div className="space-y-1.5">
           {filteredSuggestions.map((suggestion, index) => (
             <button
-              key={index}
+              key={`${suggestion}-${index}`}
               type="button"
               onClick={() => onSelect(suggestion)}
               disabled={disabled}
-              className="w-full px-3 py-1.5 rounded-lg text-left
-                bg-[rgb(var(--bg-secondary)/var(--bg-secondary-opacity))]
-                hover:bg-[rgb(var(--accent-hover)/var(--accent-hover-opacity))]
-                text-[rgb(var(--text-primary))] text-sm
-                border border-[rgb(var(--border-primary)/var(--border-primary-opacity))]
-                transition-colors
-                disabled:opacity-50 disabled:cursor-not-allowed
-                active:scale-[0.99]"
+              className="w-full rounded-lg border border-transparent bg-[rgb(var(--bg-card))] px-3 py-2.5 text-left text-sm leading-5 text-[rgb(var(--text-primary))] transition-colors hover:border-[rgb(var(--accent-primary)/0.25)] hover:bg-[rgb(var(--accent-hover)/var(--accent-hover-opacity))] disabled:cursor-not-allowed disabled:opacity-50"
             >
               <FormattedText text={suggestion} />
             </button>
           ))}
-        </>
+        </div>
       )}
-
-      {/* Refresh button */}
-      <button
-        type="button"
-        onClick={onRefresh}
-        disabled={disabled || isLoading}
-        className="self-end p-1.5 rounded-full
-          text-[rgb(var(--text-secondary)/var(--text-secondary-opacity))]
-          hover:text-[rgb(var(--accent-primary))]
-          hover:bg-[rgb(var(--accent-hover)/var(--accent-hover-opacity))]
-          transition-all
-          disabled:opacity-50 disabled:cursor-not-allowed
-          active:scale-95"
-        title={t("chatInput.refreshSuggestions")}
-      >
-        <ArrowsClockwise
-          className={`size-4 ${isLoading ? "animate-spin" : ""}`}
-          weight="bold"
-        />
-      </button>
-    </div>
+    </section>
   );
 }
