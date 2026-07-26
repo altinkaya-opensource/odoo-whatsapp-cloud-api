@@ -4,11 +4,11 @@ A Next.js-based frontend for managing WhatsApp conversations integrated with Odo
 
 ## About This Project
 
-This frontend was created through AI-assisted development (vibe coding) while the developer focused on the backend implementation. This is a collaborative effort between human expertise in Odoo backend development and AI tooling for the Next.js frontend.
+Most of this frontend was written with AI assistance while the developer worked on the Odoo backend.
 
 ## Tech Stack
 
-- **Framework**: Next.js 15.3.2 (App Router)
+- **Framework**: Next.js 15 (App Router)
 - **Language**: TypeScript
 - **Styling**: Tailwind CSS
 - **Icons**: Phosphor Icons
@@ -45,6 +45,16 @@ ODOO_JSONRPC_HOST=localhost
 ODOO_JSONRPC_PORT=8069
 ODOO_JSONRPC_PROTOCOL=http
 ODOO_JSONRPC_DATABASE=your_database
+
+# Signs the webhooks Odoo sends here (openssl rand -hex 32)
+ODOO_WEBHOOK_SECRET=
+
+# Optional, for the AI reply helpers
+AI_CHAT_ENABLED=false
+OPENAI_BASE_URL=
+OPENAI_API_KEY=
+OPENAI_MODEL=
+RAG_SUPPORTED_CHAT_URL=
 ```
 
 ## Available Scripts
@@ -64,8 +74,8 @@ ODOO_JSONRPC_DATABASE=your_database
 - Responsive design (mobile and desktop)
 - Contact management
 - Message threading
-- File attachments support
-- Reply functionality
+- File attachments
+- Replies to a specific message
 - Desktop notifications
 
 ## Project Structure
@@ -82,7 +92,7 @@ src/app/
 
 ## Pre-commit Hooks
 
-This project uses pre-commit hooks to ensure code quality. The hooks automatically run on `git commit`.
+Pre-commit hooks run on `git commit`.
 
 ### Setup
 
@@ -114,7 +124,7 @@ pre-commit run prettier --all-files
 
 ## Development Notes
 
-For detailed development guidelines, coding standards, and best practices, see [CLAUDE.md](./CLAUDE.md).
+See [CLAUDE.md](./CLAUDE.md) for the coding rules this project follows.
 
 ## Docker Deployment
 
@@ -124,8 +134,4 @@ docker compose up -d --build
 
 ## License
 
-This project is part of the Odoo WhatsApp Cloud API integration.
-
----
-
-**Note**: This is an active learning project. Contributions and feedback are welcome!
+Part of the Odoo WhatsApp Cloud API integration. LGPL-3.

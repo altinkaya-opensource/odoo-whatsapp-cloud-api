@@ -26,7 +26,7 @@
     "totpBack": "Use a different account",
     "totpInvalid": "The authentication code is invalid. Try again.",
     "totpExpired": "Your verification session expired. Sign in again.",
-    "totpUnavailable": "Authentication verification is temporarily unavailable. Try again.",
+    "totpUnavailable": "Can't verify the code right now. Try again.",
     "ssoLoggingIn": "Logging in from Odoo...",
     "ssoError": "SSO sign-in error",
     "workspaceEyebrow": "Odoo + WhatsApp",
@@ -222,7 +222,7 @@
   "connection": {
     "disconnected": {
       "title": "Connection Lost",
-      "message": "Unable to connect to the server. Please check your internet connection."
+      "message": "Can't reach the server. Check your internet connection."
     },
     "sessionExpired": {
       "title": "Session Expired",
@@ -236,7 +236,7 @@
     "blocked": {
       "title": "WhatsApp is active in another tab",
       "message": "To use WhatsApp in this tab, close the other tab or refresh this page.",
-      "footer": "This tab will automatically become active if the other tab is closed."
+      "footer": "Close the other tab and this one takes over."
     }
   }
 }

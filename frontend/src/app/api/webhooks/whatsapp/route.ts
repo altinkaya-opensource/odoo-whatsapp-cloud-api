@@ -31,8 +31,7 @@ type SSEUpdate = {
 };
 
 /**
- * Rate limiting - simple in-memory implementation
- * For production, use Redis or external rate limiting service
+ * In-memory rate limiting. Redis if this ever runs on more than one node.
  */
 const requestCounts = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute

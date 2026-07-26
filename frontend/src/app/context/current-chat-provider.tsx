@@ -380,7 +380,7 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
   );
 
   // Initialize periodic message polling as a fallback/validation mechanism
-  // This ensures messages are not lost if webhooks fail silently
+  // Catches messages a dropped webhook would have lost
   useMessagePoller(
     {
       onMessagesFound: (messages, threadId) => {
