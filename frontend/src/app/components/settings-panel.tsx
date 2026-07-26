@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  BellRingingIcon,
   CheckIcon,
   MoonIcon,
   PaletteIcon,
@@ -9,7 +10,7 @@ import {
   TextTIcon,
   TranslateIcon,
 } from "@phosphor-icons/react";
-import { type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useTranslations } from "@/app/context/translation-provider";
 import {
   type ColorScheme,
@@ -18,6 +19,10 @@ import {
 } from "@/app/context/theme-provider";
 import { useProfile } from "@/app/hooks/use-profile";
 import { useTheme } from "@/app/hooks/use-theme";
+import {
+  getNotificationPermission,
+  requestNotificationPermission,
+} from "@/app/lib/notifications";
 import LanguageSelector from "./language-selector";
 import Profile from "./profile";
 
@@ -95,6 +100,57 @@ function SettingsSection({
       </div>
       <div className="mt-4">{children}</div>
     </section>
+  );
+}
+
+/**
+ * Desktop notification opt-in.
+ *
+ * The browser only shows the permission prompt for a request that comes from
+ * a real click, so it lives behind this button instead of firing on load.
+ */
+function NotificationSetting() {
+  const { t } = useTranslations();
+  const [permission, setPermission] = useState<NotificationPermission | null>(
+    null
+  );
+
+  useEffect(() => {
+    setPermission(getNotificationPermission());
+  }, []);
+
+  if (permission === null) {
+    return (
+      <p className="text-sm text-[rgb(var(--text-secondary))]">
+        {t("settings.notificationsUnsupported")}
+      </p>
+    );
+  }
+
+  const status =
+    permission === "granted"
+      ? t("settings.notificationsEnabled")
+      : permission === "denied"
+        ? t("settings.notificationsBlocked")
+        : t("settings.notificationsPrompt");
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <p className="min-w-0 flex-1 text-sm text-[rgb(var(--text-secondary))]">
+        {status}
+      </p>
+      {permission === "default" && (
+        <button
+          type="button"
+          onClick={async () => {
+            setPermission(await requestNotificationPermission());
+          }}
+          className="rounded-lg bg-[rgb(var(--accent-primary))] px-3 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(var(--accent-primary))]"
+        >
+          {t("settings.notificationsEnable")}
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -219,6 +275,14 @@ export default function SettingsPanel() {
         description={t("settings.languageDescription")}
       >
         <LanguageSelector />
+      </SettingsSection>
+
+      <SettingsSection
+        icon={<BellRingingIcon className="size-5" weight="bold" />}
+        title={t("settings.notifications")}
+        description={t("settings.notificationsDescription")}
+      >
+        <NotificationSetting />
       </SettingsSection>
 
       <SettingsSection

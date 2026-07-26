@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
 
   if (!allowedBackendIds) {
     console.warn(
-      `[SSE] No backend_ids found in cache for session ${sessionId} - session may be expired or invalid`
+      "[SSE] Rejected connection: session not in cache (expired or invalid)"
     );
     return new Response(
       JSON.stringify({
@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
   }
 
   if (allowedBackendIds.length === 0) {
-    console.warn(`[SSE] Session ${sessionId} has no backend access`);
+    console.warn("[SSE] Rejected connection: session has no backend access");
     return new Response(
       JSON.stringify({
         error: "No WhatsApp backends available for this user",
@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
   }
 
   console.log(
-    `[SSE] User has access to backends: [${allowedBackendIds.join(", ")}] (from cache)`
+    `[SSE] Connection authorized for backends: [${allowedBackendIds.join(", ")}]`
   );
 
   // Simple connection limiting
@@ -105,6 +105,17 @@ export async function GET(request: NextRequest) {
   activeConnections.set(connectionKey, currentConnections + 1);
 
   const encoder = new TextEncoder();
+  // The counter is incremented above, so every exit path below has to run
+  // exactly one cleanup or the session locks itself out at 3 connections.
+  const decrementConnection = () => {
+    const connections = activeConnections.get(connectionKey) || 1;
+    if (connections <= 1) {
+      activeConnections.delete(connectionKey);
+    } else {
+      activeConnections.set(connectionKey, connections - 1);
+    }
+  };
+  let releaseConnection = decrementConnection;
 
   const stream = new ReadableStream({
     start(controller) {
@@ -183,8 +194,14 @@ export async function GET(request: NextRequest) {
         HEARTBEAT_INTERVAL_MS
       );
 
-      // Cleanup on connection close
+      // Cleanup on connection close - safe to call more than once
+      let isCleanedUp = false;
       const cleanup = () => {
+        if (isCleanedUp) {
+          return;
+        }
+        isCleanedUp = true;
+
         console.log(
           `[SSE] Client disconnected: ${connectionKey} (heartbeats sent: ${heartbeatCount})`
         );
@@ -196,13 +213,7 @@ export async function GET(request: NextRequest) {
         unsubscribeThreads();
         unsubscribeMessages();
 
-        // Decrement connection counter
-        const connections = activeConnections.get(connectionKey) || 1;
-        if (connections <= 1) {
-          activeConnections.delete(connectionKey);
-        } else {
-          activeConnections.set(connectionKey, connections - 1);
-        }
+        decrementConnection();
 
         try {
           controller.close();
@@ -211,8 +222,17 @@ export async function GET(request: NextRequest) {
         }
       };
 
-      // Handle client disconnect
+      releaseConnection = cleanup;
+
+      // Handle client disconnect. A request that was aborted before the
+      // stream started never fires the event, so check the state too.
       request.signal.addEventListener("abort", cleanup);
+      if (request.signal.aborted) {
+        cleanup();
+      }
+    },
+    cancel() {
+      releaseConnection();
     },
   });
 
@@ -221,8 +241,6 @@ export async function GET(request: NextRequest) {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
       Connection: "keep-alive",
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Headers": "Cache-Control, x-session-id",
     },
   });
 }

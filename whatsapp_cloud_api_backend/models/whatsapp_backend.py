@@ -52,6 +52,12 @@ class WhatsAppBackend(models.Model):
         required=True,
         default=lambda self: secrets.token_urlsafe(32),
     )
+    app_secret = fields.Char(
+        string="Meta App Secret",
+        help="App secret of the Meta app, used to verify the "
+        "X-Hub-Signature-256 header of incoming WhatsApp webhooks. "
+        "Incoming webhooks are accepted unsigned while this is empty.",
+    )
     language = fields.Many2one(
         comodel_name="res.lang",
     )

@@ -17,14 +17,44 @@ import unicodedata
 from urllib.parse import quote
 
 from odoo import http
+from odoo.exceptions import AccessError
 from odoo.http import request
 
 WP_ATTACHMENT_DOWNLOAD_PATH = "/whatsapp/attachment/download/"
 WP_ATTACHMENT_UPLOAD_PATH = "/whatsapp/attachment/upload/"
 WP_PROFILE_PICTURE_PATH = "/whatsapp/partner/profile_picture/"
 
+# Uploads are proxied straight into ir.attachment, so cap what a single
+# request may store.
+WP_MAX_UPLOAD_BYTES = 100 * 1024 * 1024
+
 
 class WhatsAppCloudAPIBackendController(http.Controller):
+    def _get_whatsapp_attachment(self, attachment_id):
+        """Return the attachment only if the user may reach it via WhatsApp.
+
+        Attachments are read with sudo, so access has to be proven through a
+        whatsapp.message the user can read: either the message points at the
+        attachment (outgoing) or the attachment is attached to the message
+        (incoming media). The record rules on whatsapp.message scope this to
+        the backends the user is assigned to.
+        """
+        Attachment = request.env["ir.attachment"].sudo()
+        attachment = Attachment.browse(attachment_id)
+        if not attachment.exists():
+            return Attachment.browse()
+
+        domain = [("attachment_id", "=", attachment.id)]
+        if attachment.res_model == "whatsapp.message" and attachment.res_id:
+            domain = ["|"] + domain + [("id", "=", attachment.res_id)]
+
+        try:
+            linked_message = request.env["whatsapp.message"].search(domain, limit=1)
+        except AccessError:
+            return Attachment.browse()
+
+        return attachment if linked_message else Attachment.browse()
+
     @http.route(
         WP_ATTACHMENT_DOWNLOAD_PATH + "<int:attachment_id>",
         type="http",
@@ -33,9 +63,8 @@ class WhatsAppCloudAPIBackendController(http.Controller):
         csrf=False,
     )
     def serve_attachment(self, attachment_id, **kwargs):
-        Attachment = http.request.env["ir.attachment"].sudo()
-        attachment = Attachment.browse(attachment_id)
-        if not attachment.exists():
+        attachment = self._get_whatsapp_attachment(attachment_id)
+        if not attachment:
             raise http.request.not_found()
         if not attachment.mimetype or not attachment.datas:
             raise http.request.not_found()
@@ -73,9 +102,11 @@ class WhatsAppCloudAPIBackendController(http.Controller):
         file = kwargs.get("file")
         if file.filename == "":
             return http.request.make_response("No selected file", status=400)
-        filecontent = file.read()
+        filecontent = file.read(WP_MAX_UPLOAD_BYTES + 1)
         if not filecontent:
             return http.request.make_response("Empty file", status=400)
+        if len(filecontent) > WP_MAX_UPLOAD_BYTES:
+            return http.request.make_response("File too large", status=413)
         # Normalize filename to handle international characters
         normalized_filename = unicodedata.normalize("NFKD", file.filename)
         safe_filename = (
@@ -99,6 +130,17 @@ class WhatsAppCloudAPIBackendController(http.Controller):
         csrf=False,
     )
     def serve_profile_picture(self, partner_id, **kwargs):
+        # Avatars are read with sudo, so only serve partners the user already
+        # sees through a WhatsApp thread on one of their backends.
+        try:
+            thread = request.env["whatsapp.thread"].search(
+                [("partner_id", "=", partner_id)], limit=1
+            )
+        except AccessError:
+            raise http.request.not_found() from None
+        if not thread:
+            raise http.request.not_found()
+
         Partner = http.request.env["res.partner"].sudo()
         partner = Partner.browse(partner_id)
         commercial_partner = partner.commercial_partner_id

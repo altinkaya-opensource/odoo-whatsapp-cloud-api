@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isValidSessionId } from "@/app/lib/odoo/server";
 
 /**
  * SSO Login Endpoint
@@ -43,14 +44,15 @@ export async function GET(request: Request) {
   // Construct the base URL using the actual host that the user sees
   const baseUrl = `${protocol}://${host}`;
 
-  // Validate session parameter exists
-  if (!sessionId || sessionId.trim().length === 0) {
+  // Validate the session parameter looks like an Odoo session id before
+  // handing it to the app, so arbitrary values cannot be planted in the URL.
+  if (!isValidSessionId(sessionId?.trim())) {
     // Redirect to root with error parameter
     return NextResponse.redirect(new URL("/?error=missing_session", baseUrl));
   }
 
   // Build redirect URL with SSO session and optional thread_id
-  let redirectPath = `/?sso_session=${encodeURIComponent(sessionId.trim())}`;
+  let redirectPath = `/?sso_session=${encodeURIComponent((sessionId as string).trim())}`;
   if (threadId && threadId.trim().length > 0) {
     redirectPath += `&thread_id=${encodeURIComponent(threadId.trim())}`;
   }

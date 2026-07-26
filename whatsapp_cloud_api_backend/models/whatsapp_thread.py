@@ -101,20 +101,43 @@ class WhatsAppThread(models.Model):
 
         Uses sudo() to bypass res.partner record rules, since WhatsApp
         threads may reference partners the current user cannot access.
+        The partners are resolved for the whole recordset at once: calling
+        sudo() per record would put every partner in its own prefetch group
+        and read the avatars one query at a time.
         """
+        threads = self.sudo().with_context(whatsapp_connector=True)
+        partner_by_thread = {
+            thread.id: thread.partner_id.commercial_partner_id.id for thread in threads
+        }
+        partners = threads.mapped("partner_id.commercial_partner_id")
+        partner_ids_with_avatar = set(partners.filtered("avatar_256").ids)
+
         for record in self:
-            if record.partner_id:
-                commercial_partner = record.sudo().partner_id.commercial_partner_id
-                # Check if partner has an actual avatar (not auto-generated)
-                partner = commercial_partner.with_context(whatsapp_connector=True)
-                record.has_avatar = bool(partner.avatar_256)
-            else:
-                record.has_avatar = False
+            record.has_avatar = (
+                partner_by_thread.get(record.id) in partner_ids_with_avatar
+            )
 
     def _compute_unread_count(self):
-        """Compute unread count for each thread."""
+        """Compute the current user's unread count for each thread.
+
+        One search for the whole recordset instead of one per thread: the
+        chat list reads this field for every row it shows.
+        """
+        counts = {thread_id: 0 for thread_id in self.ids}
+
+        if self.ids:
+            statuses = self.env["whatsapp.message.read.status"].search(
+                [
+                    ("message_id.thread_id", "in", self.ids),
+                    ("is_read", "=", False),
+                    ("user_id", "=", self.env.user.id),
+                ]
+            )
+            for thread_id in statuses.mapped("message_id").mapped("thread_id.id"):
+                counts[thread_id] = counts.get(thread_id, 0) + 1
+
         for thread in self:
-            thread.unread_count = thread.get_unread_count()
+            thread.unread_count = counts.get(thread.id, 0)
 
     def read(self, fields=None, load="_classic_read"):
         """Override to bypass res.partner record rules when reading partner_id.
@@ -305,24 +328,6 @@ class WhatsAppThread(models.Model):
             "phone_number": self.phone_number,
             "timestamp": message_record.timestamp,
         }
-
-    @api.model
-    def get_unread_count(self):
-        """
-        Calculate unread count for this thread.
-        Only count incoming messages that haven't been read.
-        """
-        return len(
-            self.env["whatsapp.message.read.status"]
-            .search(
-                [
-                    ("message_id.thread_id", "=", self.id),
-                    ("is_read", "=", False),
-                    ("user_id", "=", self.env.user.id),
-                ]
-            )
-            .mapped("message_id")
-        )
 
     def mark_as_read(self):
         """

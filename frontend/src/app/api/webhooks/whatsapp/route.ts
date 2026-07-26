@@ -43,7 +43,12 @@ function checkRateLimit(identifier: string): boolean {
   const record = requestCounts.get(identifier);
 
   if (!record || now > record.resetAt) {
-    // New window
+    // New window - drop stale keys so the map cannot grow without bound
+    requestCounts.forEach((entry, key) => {
+      if (now > entry.resetAt) {
+        requestCounts.delete(key);
+      }
+    });
     requestCounts.set(identifier, {
       count: 1,
       resetAt: now + RATE_LIMIT_WINDOW_MS,
@@ -170,14 +175,21 @@ export async function POST(request: NextRequest) {
           ? payloadData.backend_id
           : undefined;
     }
-
-    if (backendId === undefined) {
-      console.warn(
-        `[Webhook] No backend_id found in payload for ${payload.event_type}, broadcasting to all listeners`
-      );
-    }
   } catch (error) {
     console.error(`[Webhook] Failed to extract backend_id:`, error);
+  }
+
+  // Fail closed: without a backend id we cannot tell which sessions are
+  // allowed to see this event, and broadcasting to everyone would leak
+  // conversations across backends.
+  if (backendId === undefined) {
+    console.error(
+      `[Webhook] Rejected ${payload.event_type}: payload carries no backend_id`
+    );
+    return NextResponse.json(
+      { error: "Payload must include data.backend_id" },
+      { status: 400 }
+    );
   }
 
   // 7. Broadcast to SSE clients based on event type with backend access filtering

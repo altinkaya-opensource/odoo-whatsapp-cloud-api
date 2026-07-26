@@ -104,7 +104,7 @@ export async function POST(request: Request) {
         sessionCache.set(sessionId.trim(), backend.backend_ids);
       } else {
         console.warn(
-          `[ValidateSession] No backend_ids returned from initialize_web for session ${sessionId.trim()}`
+          "[ValidateSession] No backend_ids returned from initialize_web"
         );
       }
     } catch (error) {

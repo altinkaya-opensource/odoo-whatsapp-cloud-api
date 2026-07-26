@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { requireSession } from "@/app/lib/odoo/server";
 import {
   createOpenAIClient,
   isAIEnabled,
@@ -19,6 +20,11 @@ export async function POST(request: NextRequest) {
         JSON.stringify({ error: "AI feature is not enabled" }),
         { status: 403, headers: { "Content-Type": "application/json" } }
       );
+    }
+
+    const auth = await requireSession(request);
+    if ("response" in auth) {
+      return auth.response;
     }
 
     // Parse request body

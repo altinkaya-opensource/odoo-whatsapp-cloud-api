@@ -75,7 +75,10 @@ class WebhookSender:
                 "write_date": thread.write_date.strftime("%Y-%m-%d %H:%M:%S")
                 if thread.write_date
                 else None,
-                "unread_count": thread.unread_count,
+                # unread_count is deliberately absent: it is per-user, while
+                # this payload is fanned out to every user of the backend.
+                # Each client tracks its own count and re-syncs it from
+                # /whatsapp/unread_count.
                 "partner_id": (
                     [thread.partner_id.id, thread.partner_id.name]
                     if thread.partner_id
@@ -104,8 +107,10 @@ class WebhookSender:
                 "id": message.attachment_id.id,
                 "name": message.attachment_id.name,
                 "mimetype": message.attachment_id.mimetype,
-                "url": f"""{base_url}{WP_ATTACHMENT_DOWNLOAD_PATH}
-                {message.attachment_id.id}""",
+                "url": (
+                    f"{base_url}{WP_ATTACHMENT_DOWNLOAD_PATH}"
+                    f"{message.attachment_id.id}"
+                ),
                 "file_size": message.attachment_id.file_size,
             }
 
@@ -113,6 +118,13 @@ class WebhookSender:
             "event_type": event_type,
             "data": {
                 "id": message.id,
+                # Required: the frontend fans this event out only to the
+                # sessions that have access to this backend.
+                "backend_id": (
+                    [message.backend_id.id, message.backend_id.name]
+                    if message.backend_id
+                    else False
+                ),
                 "body": message.body,
                 "status": message.status,
                 "direction": message.direction,

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireSession } from "@/app/lib/odoo/server";
 import {
   isAIEnabled,
   isRagEnabled,
@@ -32,6 +33,11 @@ export async function GET(request: NextRequest) {
         { error: "AI/RAG feature is not enabled" },
         { status: 403 }
       );
+    }
+
+    const auth = await requireSession(request);
+    if ("response" in auth) {
+      return auth.response;
     }
 
     const { searchParams } = new URL(request.url);
@@ -86,6 +92,11 @@ export async function POST(request: NextRequest) {
         { error: "AI/RAG feature is not enabled" },
         { status: 403 }
       );
+    }
+
+    const auth = await requireSession(request);
+    if ("response" in auth) {
+      return auth.response;
     }
 
     // Parse request body

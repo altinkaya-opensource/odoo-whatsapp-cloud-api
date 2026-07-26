@@ -13,6 +13,8 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import base64
+import hashlib
+import hmac
 import json
 import logging
 from datetime import timedelta
@@ -72,7 +74,8 @@ class WhatsAppCloudAPIWebhookController(http.Controller):
         """
         Endpoint to handle WhatsApp Cloud API webhooks.
         """
-        payload = json.loads(request.httprequest.data.decode("utf-8"))
+        raw_body = request.httprequest.data
+        payload = json.loads(raw_body.decode("utf-8"))
         backend = self._find_backend_from_payload(payload)
         if not backend:
             _logger.warning(
@@ -80,9 +83,41 @@ class WhatsAppCloudAPIWebhookController(http.Controller):
                 payload,
             )
             return {"error": "invalid_webhook"}
+        if not self._verify_payload_signature(backend, raw_body):
+            return {"error": "invalid_signature"}
         self._use_backend_language(backend)
         self._handle_webhook_payload(backend, payload)
         return {"status": "processed"}
+
+    def _verify_payload_signature(self, backend, raw_body):
+        """Check Meta's X-Hub-Signature-256 header against the app secret.
+
+        The backend is resolved from the (still untrusted) payload only to
+        pick which secret to check the signature with.
+        """
+        app_secret = backend.sudo().app_secret
+        if not app_secret:
+            _logger.warning(
+                "WhatsApp webhook for backend %s accepted without signature "
+                "verification: no Meta app secret configured.",
+                backend.name,
+            )
+            return True
+
+        header = request.httprequest.headers.get("X-Hub-Signature-256") or ""
+        received = header[len("sha256=") :] if header.startswith("sha256=") else ""
+        expected = hmac.new(
+            app_secret.encode("utf-8"), raw_body, hashlib.sha256
+        ).hexdigest()
+
+        if not hmac.compare_digest(received, expected):
+            _logger.warning(
+                "WhatsApp webhook rejected for backend %s: invalid signature.",
+                backend.name,
+            )
+            return False
+
+        return True
 
     def _use_backend_language(self, backend):
         """Prepare language context for operations."""

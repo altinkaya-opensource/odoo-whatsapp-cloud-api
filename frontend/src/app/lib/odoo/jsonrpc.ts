@@ -422,6 +422,11 @@ export class OdooSessionClient {
     return this.request<T>(body, "/web/dataset/call_button");
   }
 
+  /** Call a `type="json"` Odoo controller directly. */
+  async callController<T>(path: string, params: Record<string, unknown> = {}) {
+    return this.request<T>(params, path);
+  }
+
   private async request<T>(
     params: Record<string, unknown>,
     path = "/web/dataset/call_kw"

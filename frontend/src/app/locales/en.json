@@ -193,7 +193,14 @@
     "textLargeDescription": "More room for readable text",
     "language": "Language",
     "languageDescription": "Choose the app language.",
-    "savedLocally": "Appearance preferences are saved in this browser."
+    "savedLocally": "Appearance preferences are saved in this browser.",
+    "notifications": "Notifications",
+    "notificationsDescription": "Get a desktop alert when a new message arrives.",
+    "notificationsEnable": "Enable notifications",
+    "notificationsEnabled": "Desktop notifications are on.",
+    "notificationsBlocked": "Notifications are blocked. Allow them for this site in your browser settings.",
+    "notificationsPrompt": "Notifications are off. Turn them on to hear about messages while this tab is in the background.",
+    "notificationsUnsupported": "This browser does not support desktop notifications."
   },
   "profile": {
     "identityDescription": "Your signed-in workspace identity.",

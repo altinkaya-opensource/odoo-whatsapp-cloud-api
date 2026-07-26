@@ -18,6 +18,7 @@ import DragDropZone from "../message/drag-drop-zone";
 import SuggestionChips from "../message/suggestion-chips";
 import { useTranslations } from "@/app/context/translation-provider";
 import { useContacts } from "@/app/hooks/use-contacts";
+import { useAuth } from "@/app/hooks/use-auth";
 import {
   ChatCircleDotsIcon,
   XCircleIcon,
@@ -63,6 +64,7 @@ export default function CurrentChat() {
   >(null);
   const { t, locale } = useTranslations();
   const { contacts } = useContacts();
+  const { sessionId } = useAuth();
 
   useEffect(() => {
     // Abort any ongoing suggestion requests when switching threads
@@ -254,6 +256,7 @@ export default function CurrentChat() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "x-session-id": sessionId ?? "",
         },
         body: JSON.stringify({
           messages: messages.slice(-10), // Last 10 messages
@@ -335,6 +338,7 @@ export default function CurrentChat() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "x-session-id": sessionId ?? "",
         },
         body: JSON.stringify({
           messages: messages.slice(-10), // Last 10 messages
@@ -421,7 +425,10 @@ export default function CurrentChat() {
       try {
         const response = await fetch("/api/ai/translate-message", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "x-session-id": sessionId ?? "",
+          },
           body: JSON.stringify({
             text: message.message,
             targetLanguage: locale,
@@ -447,7 +454,7 @@ export default function CurrentChat() {
         setTranslatingMessageId(null);
       }
     },
-    [locale, translations]
+    [locale, translations, sessionId]
   );
 
   // Generate suggestions with server-side caching
@@ -483,7 +490,10 @@ export default function CurrentChat() {
         try {
           const cacheResponse = await fetch(
             `/api/ai/rag-suggestions?threadId=${chatId}&lastMessageId=${lastMessageId}`,
-            { signal: abortController.signal }
+            {
+              signal: abortController.signal,
+              headers: { "x-session-id": sessionId ?? "" },
+            }
           );
 
           if (cacheResponse.ok) {
@@ -512,7 +522,10 @@ export default function CurrentChat() {
       try {
         const response = await fetch("/api/ai/rag-suggestions", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "x-session-id": sessionId ?? "",
+          },
           body: JSON.stringify({
             threadId: chatId,
             lastMessageId,
@@ -541,7 +554,7 @@ export default function CurrentChat() {
         }
       }
     },
-    [messages, contacts, chatId]
+    [messages, contacts, chatId, sessionId]
   );
 
   // Handle suggestion selection - populate textarea

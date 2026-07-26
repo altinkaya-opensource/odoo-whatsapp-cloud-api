@@ -11,6 +11,7 @@ import { useSSE } from "../hooks/use-sse";
 import { useThreadsPoller } from "../hooks/use-threads-poller";
 import { useConnection } from "./connection-provider";
 import { buildPartnerAvatarUrl } from "../lib/odoo/avatar-url";
+import { notifyIncomingMessage, setUnreadBadge } from "../lib/notifications";
 
 export enum Filters {
   ALL = "all",
@@ -126,163 +127,9 @@ export const ChatsContext = createContext<
     }
 >(undefined);
 
-// Constants for localStorage persistence
-const NOTIFICATION_STATE_KEY = "whatsapp.notificationState.threads";
-const NOTIFIED_MESSAGES_KEY = "whatsapp.notificationState.messages";
-const MESSAGE_NOTIFICATION_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
-const NOTIFICATION_PERMISSION_KEY = "whatsapp.notificationPermission.dismissed";
 const THREADS_PAGE_SIZE = 30;
 const MESSAGE_SEARCH_PAGE_SIZE = 20;
 const CONTACT_SEARCH_PAGE_SIZE = 5;
-
-// Helper to load notification state from localStorage
-function loadNotificationState(): Map<string, number> {
-  if (typeof window === "undefined") return new Map();
-
-  try {
-    const stored = localStorage.getItem(NOTIFICATION_STATE_KEY);
-    if (!stored) return new Map();
-
-    const parsed: { [key: string]: number } = JSON.parse(stored);
-    return new Map(Object.entries(parsed));
-  } catch (error) {
-    console.error(
-      "[Notifications] Failed to restore state from localStorage:",
-      error
-    );
-    return new Map();
-  }
-}
-
-// Helper to save notification state to localStorage (debounced)
-let saveTimeout: NodeJS.Timeout | null = null;
-function saveNotificationState(state: Map<string, number>) {
-  if (typeof window === "undefined") return;
-
-  // Debounce saves to avoid excessive localStorage writes
-  if (saveTimeout) clearTimeout(saveTimeout);
-
-  saveTimeout = setTimeout(() => {
-    try {
-      const stateObj = Object.fromEntries(state);
-      localStorage.setItem(NOTIFICATION_STATE_KEY, JSON.stringify(stateObj));
-    } catch (error) {
-      console.error(
-        "[Notifications] Failed to save state to localStorage:",
-        error
-      );
-    }
-  }, 1000); // Debounce for 1 second
-}
-
-// Helper to load notified messages from localStorage
-function loadNotifiedMessages(): Set<string> {
-  if (typeof window === "undefined") return new Set();
-
-  try {
-    const stored = localStorage.getItem(NOTIFIED_MESSAGES_KEY);
-    if (!stored) return new Set();
-
-    const parsed: { [key: string]: number } = JSON.parse(stored);
-    const now = Date.now();
-
-    // Filter out expired entries (older than TTL)
-    const validKeys = Object.entries(parsed)
-      .filter(([, timestamp]) => now - timestamp < MESSAGE_NOTIFICATION_TTL)
-      .map(([key]) => key);
-
-    return new Set(validKeys);
-  } catch (error) {
-    console.error(
-      "[Notifications] Failed to restore notified messages from localStorage:",
-      error
-    );
-    return new Set();
-  }
-}
-
-// Helper to save notified messages to localStorage (debounced)
-let saveMessagesTimeout: NodeJS.Timeout | null = null;
-function saveNotifiedMessages(messages: Set<string>) {
-  if (typeof window === "undefined") return;
-
-  // Debounce saves to avoid excessive localStorage writes
-  if (saveMessagesTimeout) clearTimeout(saveMessagesTimeout);
-
-  saveMessagesTimeout = setTimeout(() => {
-    try {
-      const now = Date.now();
-      // Store message keys with current timestamp
-      const messageObj: { [key: string]: number } = {};
-      messages.forEach((key) => {
-        messageObj[key] = now;
-      });
-
-      localStorage.setItem(NOTIFIED_MESSAGES_KEY, JSON.stringify(messageObj));
-    } catch (error) {
-      console.error(
-        "[Notifications] Failed to save notified messages to localStorage:",
-        error
-      );
-    }
-  }, 1000); // Debounce for 1 second
-}
-
-// Helper to build message notification key
-function buildMessageNotificationKey(
-  messageId: number,
-  threadId: string,
-  timestamp: number
-): string {
-  return `${threadId}-${messageId}-${timestamp}`;
-}
-
-// Helper to check if permission was previously dismissed
-function wasPermissionDismissed(): boolean {
-  if (typeof window === "undefined") return false;
-  return localStorage.getItem(NOTIFICATION_PERMISSION_KEY) === "true";
-}
-
-// Helper to mark permission as dismissed
-function markPermissionDismissed() {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(NOTIFICATION_PERMISSION_KEY, "true");
-}
-
-// Helper to show browser notification for a thread
-function showBrowserNotification(
-  threadName: string,
-  messagePreview: string,
-  threadId: string
-) {
-  if (typeof window === "undefined" || !("Notification" in window)) {
-    return;
-  }
-
-  if (Notification.permission === "granted") {
-    new Notification(threadName || "New message", {
-      body: messagePreview || "You have a new message",
-      tag: `thread-${threadId}`, // Prevent duplicate notifications for same thread
-    });
-  } else if (
-    Notification.permission === "default" &&
-    !wasPermissionDismissed()
-  ) {
-    Notification.requestPermission()
-      .then((permission) => {
-        if (permission === "denied") {
-          markPermissionDismissed();
-        } else if (permission === "granted") {
-          // Permission granted, show the notification now
-          new Notification(threadName || "New message", {
-            body: messagePreview || "You have a new message",
-            tag: `thread-${threadId}`,
-          });
-        }
-      })
-      .catch(() => undefined);
-  }
-}
 
 type ChatsProviderProps = PropsWithChildren<{
   includeThreadId?: string | null;
@@ -318,31 +165,23 @@ export default function ChatsProvider({
   const { sessionId, backendId: authBackendId } = useAuth();
   const { reportApiError, reportConnectionRestored } = useConnection();
   const isFetchingRef = useRef(false);
-  const notificationAudioRef = useRef<HTMLAudioElement | null>(null);
-  const lastNotifiedUnreadCountRef = useRef<Map<string, number>>(new Map()); // threadId -> last notified unread count
-  const notifiedMessagesRef = useRef<Set<string>>(new Set()); // messageId-threadId-timestamp -> notified
+  const latestRequestIdRef = useRef(0);
+  const applyFilterRef = useRef<(chats: Chat[]) => Chat[]>((chats) => chats);
+  const chatsRef = useRef<Chat[]>([]);
+  const [serverUnreadCount, setServerUnreadCount] = useState<number | null>(
+    null
+  );
   const [odooBaseUrl, setOdooBaseUrl] = useState<string | null>(null);
 
   useEffect(() => {
     debouncedSearchQueryRef.current = debouncedSearchQuery;
   }, [debouncedSearchQuery]);
 
-  // Initialize notification audio
+  // Message handlers read the thread list from a ref so they never depend on
+  // the render that produced it.
   useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    notificationAudioRef.current = new Audio("/notification.mp3");
-  }, []);
-
-  // Restore notification state from localStorage on mount
-  useEffect(() => {
-    const restoredState = loadNotificationState();
-    lastNotifiedUnreadCountRef.current = restoredState;
-
-    const restoredMessages = loadNotifiedMessages();
-    notifiedMessagesRef.current = restoredMessages;
-  }, []);
+    chatsRef.current = chats.complete;
+  }, [chats.complete]);
 
   // Fetch Odoo base URL for avatar generation
   useEffect(() => {
@@ -375,15 +214,6 @@ export default function ChatsProvider({
         has_avatar?: boolean; // NEW: Whether partner has an actual avatar image
       }>;
 
-      // Track if any thread has a genuinely new message for notifications
-      // Use ref to check outside of setChats to avoid stale closure
-      let shouldPlayNotification = false;
-      const threadsToNotify: Array<{
-        id: string;
-        name: string;
-        preview: string;
-      }> = [];
-
       setChats((prev) => {
         // Create a map of existing chats for efficient lookup
         const existingChatsMap = new Map(
@@ -401,46 +231,11 @@ export default function ChatsProvider({
               ? new Date(thread.last_message_date + "Z").getTime()
               : existingChat.lastMessageAt;
 
-            // Prefer backend data, but respect frontend optimistic updates
-            // Use Math.max() to handle race conditions where:
-            // - Frontend SSE gets message webhook first → increments unread immediately
-            // - Backend thread.updated webhook arrives with stale count (queue delay)
-            // - Polling syncs to backend ground truth periodically
-            const backendUnreadCount = thread.unread_count ?? 0;
-            const frontendUnreadCount = existingChat.unreadCount ?? 0;
-            const newUnreadCount = Math.max(
-              backendUnreadCount,
-              frontendUnreadCount
-            );
-            const lastNotifiedCount =
-              lastNotifiedUnreadCountRef.current.get(threadId);
-
-            // Check if we should play notification for this thread
-            // Play if: unread count INCREASED compared to last notified count
-            // This handles ONLY incoming messages (outgoing messages don't increase unread count)
-            if (
-              lastNotifiedCount !== undefined &&
-              newUnreadCount > lastNotifiedCount
-            ) {
-              // Unread count increased - play notification!
-              shouldPlayNotification = true;
-              threadsToNotify.push({
-                id: threadId,
-                name: thread.name || `Thread ${threadId}`,
-                preview: thread.last_message_preview || "New message",
-              });
-              lastNotifiedUnreadCountRef.current.set(threadId, newUnreadCount);
-              saveNotificationState(lastNotifiedUnreadCountRef.current);
-            } else if (lastNotifiedCount === undefined) {
-              // First time seeing this thread - set baseline without notifying
-              lastNotifiedUnreadCountRef.current.set(threadId, newUnreadCount);
-              saveNotificationState(lastNotifiedUnreadCountRef.current);
-            } else if (newUnreadCount < lastNotifiedCount) {
-              // Unread count decreased (user read messages) - update baseline
-              lastNotifiedUnreadCountRef.current.set(threadId, newUnreadCount);
-              saveNotificationState(lastNotifiedUnreadCountRef.current);
-            }
-
+            // Thread events are fanned out to every user of the backend, so
+            // they never carry an unread count; only the per-user thread
+            // fetch does. Keep the local count when it is absent.
+            const newUnreadCount =
+              thread.unread_count ?? existingChat.unreadCount ?? 0;
             const hasUnread = newUnreadCount > 0;
 
             // Extract partner ID and display name from Odoo tuple
@@ -486,10 +281,6 @@ export default function ChatsProvider({
               ? new Date(thread.last_message_date + "Z").getTime()
               : Date.now();
             const newUnreadCount = thread.unread_count ?? 0;
-
-            // For new chats, set baseline without notifying (they're new to the list)
-            lastNotifiedUnreadCountRef.current.set(threadId, newUnreadCount);
-            saveNotificationState(lastNotifiedUnreadCountRef.current);
 
             // Extract partner ID and display name from Odoo tuple
             const partnerId =
@@ -542,51 +333,17 @@ export default function ChatsProvider({
           );
         }
 
-        // Apply filter to get filtered list
-        let filteredList = updatedComplete;
-        if (filter === Filters.UNREAD) {
-          filteredList = updatedComplete.filter((chat) => !chat.read);
-        } else if (filter === Filters.FAVORITES) {
-          filteredList = updatedComplete.filter((chat) => chat.favorite);
-        } else if (filter === Filters.GROUPS) {
-          filteredList = updatedComplete.filter((chat) => chat.group);
-        }
-
         return {
           ...prev,
           complete: updatedComplete,
-          filtered: filteredList,
+          // Same filter as everywhere else, so a live update cannot slip a
+          // thread from another phone number into a filtered list.
+          filtered: applyFilterRef.current(updatedComplete),
           isLoading: false,
         };
       });
-
-      // Play notification sound if any thread had a new message
-      // This fixes Bug 2: notifications for messages from inactive threads
-      if (shouldPlayNotification) {
-        if (notificationAudioRef.current) {
-          notificationAudioRef.current.currentTime = 0;
-          notificationAudioRef.current.play().catch(() => {
-            // Failed to play notification sound
-          });
-        } else {
-          // Try to initialize audio if it doesn't exist
-          try {
-            const audio = new Audio("/notification.mp3");
-            audio.play().catch(() => undefined);
-            notificationAudioRef.current = audio;
-          } catch {
-            // Failed to create audio element
-          }
-        }
-
-        // Show browser notifications for all threads that triggered notifications
-        // This works for ALL threads, not just the active one
-        threadsToNotify.forEach((thread) => {
-          showBrowserNotification(thread.name, thread.preview, thread.id);
-        });
-      }
     },
-    [filter, odooBaseUrl, sessionId]
+    [odooBaseUrl, sessionId]
   );
 
   // Handle message arrivals to update thread list (unread count, preview, timestamp)
@@ -602,72 +359,56 @@ export default function ChatsProvider({
 
       if (odooMessages.length === 0) return;
 
-      // Check for new incoming messages to notify about
-      const incomingMessagesToNotify: Array<{
-        id: number;
-        body: string;
-        threadId: string;
-        threadName: string;
-      }> = [];
+      // The thread may not be loaded yet (older than the first page, or new).
+      // Still alert the user - only the title falls back.
+      const chat = chatsRef.current.find((entry) => entry.id === threadId);
+      const threadName =
+        chat?.partnerName || chat?.threadName || chat?.phoneNumber || null;
+
+      // Notify outside of the state updater: this is the only place that
+      // alerts the user about a message, and it must run exactly once per
+      // message even if React re-invokes the updater.
+      let unreadIncrement = 0;
+      odooMessages.forEach((message) => {
+        if (message.direction !== "incoming") {
+          return;
+        }
+
+        const { isNew, interrupted } = notifyIncomingMessage({
+          threadId,
+          messageId: message.id,
+          title: threadName ?? "WhatsApp",
+          body: message.body || "New message",
+        });
+
+        // A message that arrives in the thread the user is reading is marked
+        // read straight away, so counting it would only make the badge flash.
+        if (isNew && interrupted) {
+          unreadIncrement += 1;
+        }
+      });
+
+      const latestMessage = odooMessages[odooMessages.length - 1];
 
       setChats((prev) => {
         const existingChatsMap = new Map(
-          prev.complete.map((chat) => [chat.id, chat])
+          prev.complete.map((entry) => [entry.id, entry])
         );
-        const chat = existingChatsMap.get(threadId);
+        const current = existingChatsMap.get(threadId);
 
-        if (!chat) {
+        if (!current) {
           return prev;
         }
 
-        // Count incoming messages in this batch
-        let incomingMessageCount = 0;
-        const latestMessage = odooMessages[odooMessages.length - 1];
+        const newUnreadCount = (current.unreadCount || 0) + unreadIncrement;
 
-        odooMessages.forEach((message) => {
-          const isIncoming = message.direction === "incoming";
-          if (isIncoming) {
-            incomingMessageCount++;
-
-            // Check if this message should trigger a notification
-            const messageKey = buildMessageNotificationKey(
-              message.id,
-              threadId,
-              message.timestamp
-            );
-
-            if (!notifiedMessagesRef.current.has(messageKey)) {
-              // New incoming message - add to notification list
-              incomingMessagesToNotify.push({
-                id: message.id,
-                body: message.body || "New message",
-                threadId: threadId,
-                threadName:
-                  chat.threadName || chat.phoneNumber || `Thread ${threadId}`,
-              });
-
-              // Mark as notified
-              notifiedMessagesRef.current.add(messageKey);
-            }
-          }
-        });
-
-        // Calculate new unread count
-        // IMPORTANT: Start with existing count (don't override initial value!)
-        // Then add the new incoming messages we just received
-        const currentUnreadCount = chat.unreadCount || 0;
-        const newUnreadCount = currentUnreadCount + incomingMessageCount;
-
-        // Update thread with new message info
-        const updatedChat = {
-          ...chat,
-          lastMessagePreview: latestMessage.body || chat.lastMessagePreview,
+        existingChatsMap.set(threadId, {
+          ...current,
+          lastMessagePreview: latestMessage.body || current.lastMessagePreview,
           lastMessageAt: latestMessage.timestamp * 1000,
           unreadCount: newUnreadCount,
           read: newUnreadCount === 0, // Thread is "read" only when unread count is 0
-        };
-
-        existingChatsMap.set(threadId, updatedChat);
+        });
 
         // Rebuild array and sort by lastMessageAt (only when not searching)
         const updatedChats = Array.from(existingChatsMap.values());
@@ -682,26 +423,6 @@ export default function ChatsProvider({
           complete: updatedChats,
         };
       });
-
-      // Show browser notifications for new incoming messages
-      // This works for ALL threads, including closed ones!
-      if (incomingMessagesToNotify.length > 0) {
-        // Save updated notification state
-        saveNotifiedMessages(notifiedMessagesRef.current);
-
-        // Show browser notification for each message
-        incomingMessagesToNotify.forEach((msg) => {
-          showBrowserNotification(msg.threadName, msg.body, msg.threadId);
-        });
-
-        // Play audio notification sound
-        if (notificationAudioRef.current) {
-          notificationAudioRef.current.currentTime = 0;
-          notificationAudioRef.current.play().catch(() => {
-            // Failed to play notification sound
-          });
-        }
-      }
     },
     []
   );
@@ -780,6 +501,10 @@ export default function ChatsProvider({
     },
     [filter, selectedBackendId]
   );
+
+  useEffect(() => {
+    applyFilterRef.current = applyFilter;
+  }, [applyFilter]);
 
   const updateFilter = (filter: string) => {
     setFilter(filter as Filters);
@@ -903,10 +628,6 @@ export default function ChatsProvider({
 
   const markChatAsRead = useCallback(
     (chatId: string) => {
-      // Reset the notified unread count so we don't re-notify
-      lastNotifiedUnreadCountRef.current.set(chatId, 0);
-      saveNotificationState(lastNotifiedUnreadCountRef.current);
-
       setChats((prev) => {
         const updatedComplete = prev.complete.map((chat) => {
           if (chat.id === chatId) {
@@ -1028,10 +749,13 @@ export default function ChatsProvider({
         return;
       }
 
-      if (isFetchingRef.current) {
+      // Only one page-in-flight at a time for "load more"; a filter change
+      // must not be dropped, so it supersedes the request in flight instead.
+      if (append && isFetchingRef.current) {
         return;
       }
 
+      const requestId = ++latestRequestIdRef.current;
       isFetchingRef.current = true;
       if (showLoading) {
         setChats((prev) => ({ ...prev, isLoading: true }));
@@ -1053,6 +777,11 @@ export default function ChatsProvider({
         if (debouncedSearchQuery.trim().length > 0) {
           url += `&search=${encodeURIComponent(debouncedSearchQuery.trim())}`;
         }
+        // Let Odoo do the filtering: a full page of threads for the selected
+        // phone number, instead of whatever survives filtering 30 mixed rows.
+        if (selectedBackendId !== null) {
+          url += `&backendId=${selectedBackendId}`;
+        }
 
         const response = await fetch(url, {
           headers: {
@@ -1068,6 +797,9 @@ export default function ChatsProvider({
         }
 
         const data = await response.json();
+        if (requestId !== latestRequestIdRef.current) {
+          return; // A newer filter/search replaced this request.
+        }
         const threads: ThreadRecord[] = Array.isArray(data?.threads)
           ? data.threads
           : [];
@@ -1122,6 +854,7 @@ export default function ChatsProvider({
       applyFilter,
       includeThreadId,
       debouncedSearchQuery,
+      selectedBackendId,
     ]
   );
 
@@ -1230,10 +963,48 @@ export default function ChatsProvider({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSearchQuery, sessionId]);
 
-  // Calculate total unread count
-  const totalUnreadCount = chats.complete.reduce((total, chat) => {
-    return total + (chat.unreadCount ?? 0);
-  }, 0);
+  // Unread total across every thread, not just the loaded page. The local sum
+  // only tells us when something changed; the server holds the real number.
+  const loadedUnreadCount = chats.complete.reduce(
+    (total, chat) => total + (chat.unreadCount ?? 0),
+    0
+  );
+
+  useEffect(() => {
+    if (!sessionId) {
+      setServerUnreadCount(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+      fetch("/api/threads/unread-count", {
+        headers: { "x-session-id": sessionId },
+        signal: controller.signal,
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (typeof data?.unreadCount === "number") {
+            setServerUnreadCount(data.unreadCount);
+          }
+        })
+        .catch(() => {
+          // Keep the last known total; the local sum is the fallback.
+        });
+    }, 400);
+
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [sessionId, loadedUnreadCount]);
+
+  const totalUnreadCount = serverUnreadCount ?? loadedUnreadCount;
+
+  // Mirror the unread total onto the app icon (installed PWA / dock).
+  useEffect(() => {
+    setUnreadBadge(totalUnreadCount);
+  }, [totalUnreadCount]);
 
   return (
     <ChatsContext.Provider

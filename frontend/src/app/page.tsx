@@ -37,6 +37,7 @@ import { useCurrentChat } from "./hooks/use-current-chat";
 import TabSyncProvider from "./context/tab-sync-provider";
 import { useTabSync } from "./hooks/use-tab-sync";
 import SessionBlockedOverlay from "./components/session-blocked-overlay";
+import { onOpenThreadRequest } from "./lib/notifications";
 
 // Context to pass initial thread_id to child components
 const InitialThreadContext = createContext<string | null>(null);
@@ -122,6 +123,47 @@ function AutoSelectChat() {
   return null;
 }
 
+/**
+ * Opens the conversation a desktop notification was clicked on.
+ */
+function NotificationRouter() {
+  const { chats } = useChats();
+  const { loadCurrentChat, chatId } = useCurrentChat();
+  const { setCurrentView } = useMobileNavigation();
+
+  useEffect(() => {
+    return onOpenThreadRequest((threadId) => {
+      if (threadId === chatId) {
+        setCurrentView("activeChat");
+        return;
+      }
+
+      const target = chats.complete.find((chat) => chat.id === threadId);
+      if (!target) {
+        return;
+      }
+
+      loadCurrentChat({
+        chatId: target.id,
+        page: 0,
+        messages: [],
+        contact: null,
+        group: null,
+        threadName: target.threadName ?? null,
+        phoneNumber: target.phoneNumber ?? null,
+        backendId: target.backendId ?? null,
+        partnerId: target.partnerId ?? null,
+        partnerName: target.partnerName ?? null,
+        partnerAvatar: target.partnerAvatar ?? null,
+        hasAvatar: target.hasAvatar ?? false,
+      });
+      setCurrentView("activeChat");
+    });
+  }, [chats.complete, chatId, loadCurrentChat, setCurrentView]);
+
+  return null;
+}
+
 function ResponsiveLayout() {
   const { isMobile, isInitialized } = useResponsive();
   const { currentView } = useMobileNavigation();
@@ -203,6 +245,7 @@ function AppShell() {
             <CurrentChatProvider>
               <MobileNavigationProvider>
                 <AutoSelectChat />
+                <NotificationRouter />
                 <ResponsiveLayout />
               </MobileNavigationProvider>
             </CurrentChatProvider>

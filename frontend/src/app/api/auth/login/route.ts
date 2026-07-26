@@ -98,9 +98,7 @@ export async function POST(request: Request) {
       if (backend && Array.isArray(backend.backend_ids)) {
         sessionCache.set(sessionId, backend.backend_ids);
       } else {
-        console.warn(
-          `[Login] No backend_ids returned from initialize_web for session ${sessionId}`
-        );
+        console.warn("[Login] No backend_ids returned from initialize_web");
       }
     } catch (error) {
       console.error("[Login] Failed to initialize WhatsApp backend:", error);
