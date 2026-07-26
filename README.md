@@ -31,7 +31,7 @@ See [frontend/README.md](./frontend/README.md) for detailed setup instructions.
 ## Requirements
 
 - **Backend**: Odoo 16.0+, Python 3.8+
-- **Frontend**: Node.js 18+, Yarn
+- **Frontend**: Node.js 20.9+, Bun
 
 ## License
 

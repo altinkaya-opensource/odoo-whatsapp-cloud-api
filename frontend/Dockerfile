@@ -1,19 +1,14 @@
 # Multi-stage build for Next.js production deployment
 
 # Stage 1: Dependencies
-FROM node:20-alpine AS deps
+FROM oven/bun:1.3-alpine AS deps
 WORKDIR /app
 
-# Install dependencies based on the preferred package manager
-COPY package.json package-lock.json* yarn.lock* ./
-RUN \
-  if [ -f yarn.lock ]; then yarn --frozen-lockfile; \
-  elif [ -f package-lock.json ]; then npm ci; \
-  else echo "Lockfile not found." && exit 1; \
-  fi
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
 
 # Stage 2: Build
-FROM node:20-alpine AS builder
+FROM oven/bun:1.3-alpine AS builder
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
@@ -24,10 +19,11 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
 # Build the application
-RUN npm run build
+RUN bun run build
 
 # Stage 3: Production image
-FROM node:20-alpine AS runner
+# Next.js standalone output ships a Node server, so the runtime stays on Node.
+FROM node:24-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production

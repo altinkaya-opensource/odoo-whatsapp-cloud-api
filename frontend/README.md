@@ -8,7 +8,7 @@ Most of this frontend was written with AI assistance while the developer worked 
 
 ## Tech Stack
 
-- **Framework**: Next.js 15 (App Router)
+- **Framework**: Next.js 16 (App Router)
 - **Language**: TypeScript
 - **Styling**: Tailwind CSS
 - **Icons**: Phosphor Icons
@@ -18,22 +18,22 @@ Most of this frontend was written with AI assistance while the developer worked 
 
 ### Prerequisites
 
-- Node.js (v18 or higher)
-- Yarn package manager
+- Node.js 20.9 or higher
+- Bun package manager
 - Running Odoo backend with WhatsApp Cloud API module
 
 ### Installation
 
 ```bash
 # Install dependencies
-yarn install
+bun install
 
 # Set up environment variables
 cp .env.example .env.local
 # Edit .env.local with your Odoo configuration
 
 # Run development server
-yarn dev
+bun run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
@@ -59,13 +59,13 @@ RAG_SUPPORTED_CHAT_URL=
 
 ## Available Scripts
 
-- `yarn dev` - Start development server
-- `yarn build` - Build for production
-- `yarn start` - Start production server
-- `yarn lint` - Run ESLint
-- `yarn prettier` - Check code formatting
-- `yarn prettier:fix` - Fix code formatting
-- `yarn type-check` - Run TypeScript type checking
+- `bun run dev` - Start development server
+- `bun run build` - Build for production
+- `bun run start` - Start production server
+- `bun run lint` - Run ESLint
+- `bun run prettier` - Check code formatting
+- `bun run prettier:fix` - Fix code formatting
+- `bun run type-check` - Run TypeScript type checking
 
 ## Features
 

@@ -3,13 +3,13 @@
 ## Development Environment
 
 - **Language**: TypeScript
-- **Framework**: Next.js 15 (App Router, Turbopack in dev)
+- **Framework**: Next.js 16 (App Router, Turbopack)
 - **Styling**: Tailwind CSS
 - **Icons**: Phosphor Icons (`@phosphor-icons/react`)
 - **State**: React Context
 - **Real-time**: Server-Sent Events fed by Odoo webhooks
 - **Backend**: Odoo JSON-RPC
-- **Package manager**: yarn. Do not use npm or pnpm.
+- **Package manager**: bun. Do not use npm, yarn or pnpm.
 
 ## Project Structure
 
@@ -23,10 +23,10 @@
 
 ## Commands
 
-- `yarn dev` - dev server on port 3000
-- `yarn build` / `yarn start` - production build and serve
-- `yarn lint`, `yarn type-check`, `yarn prettier`, `yarn prettier:fix`
-- `yarn test` - vitest
+- `bun run dev` - dev server on port 3000
+- `bun run build` / `bun run start` - production build and serve
+- `bun run lint`, `bun run type-check`, `bun run prettier`, `bun run prettier:fix`
+- `bun run test` - vitest
 - `docker compose up -d --build`, `docker compose logs -f`
 
 ## Translations
@@ -230,5 +230,5 @@ Reach them through their hooks (`useAuth`, `useChats`, `useCurrentChat`,
 - Text goes through `t()`, with keys in both `en.json` and `tr.json`
 - Colours use CSS variables, checked in dark and in light
 - Layout checked below and above 768px
-- `yarn type-check`, `yarn lint` and `yarn prettier` pass
+- `bun run type-check`, `bun run lint` and `bun run prettier` pass
 - Anything touching Odoo models confirmed with the backend developer

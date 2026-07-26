@@ -9,7 +9,11 @@ const mocks = vi.hoisted(() => {
     count: vi.fn(),
   };
   const createSession = vi.fn(() => sessionClient);
-  const OdooClient = vi.fn(() => ({ createSession }));
+  // vitest 4 constructs mocks with Reflect.construct, so `new OdooClient()`
+  // needs a real function here, not an arrow.
+  const OdooClient = vi.fn(function () {
+    return { createSession };
+  });
 
   return { OdooClient, createSession, sessionClient };
 });
