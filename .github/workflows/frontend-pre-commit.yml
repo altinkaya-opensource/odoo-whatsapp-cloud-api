@@ -25,16 +25,20 @@ jobs:
         with:
           python-version: "3.12"
 
+      # next build and vitest run on Node; bun is the package manager.
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          cache: "yarn"
-          cache-dependency-path: frontend/yarn.lock
+          node-version: "24"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.6"
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: yarn install --frozen-lockfile
+        run: bun install --frozen-lockfile
 
       - name: Get python version for cache
         run: echo "PY=$(python -VV | sha256sum | cut -d' ' -f1)" >> $GITHUB_ENV

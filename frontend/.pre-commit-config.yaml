@@ -19,7 +19,7 @@ repos:
     hooks:
       - id: prettier
         name: Prettier
-        entry: bash -c 'cd frontend && yarn prettier --write --ignore-unknown'
+        entry: bash -c 'cd frontend && bun run prettier --write --ignore-unknown'
         language: system
         types: [text]
         files: ^frontend/.*\.(ts|tsx|js|jsx|json|css|md)$
@@ -27,7 +27,7 @@ repos:
 
       - id: eslint
         name: ESLint
-        entry: bash -c 'cd frontend && yarn lint --fix'
+        entry: bash -c 'cd frontend && bun run lint --fix'
         language: system
         types_or: [javascript, jsx, ts, tsx]
         files: ^frontend/
@@ -35,7 +35,7 @@ repos:
 
       - id: typescript
         name: TypeScript Check
-        entry: bash -c 'cd frontend && yarn type-check'
+        entry: bash -c 'cd frontend && bun run type-check'
         language: system
         types_or: [ts, tsx]
         files: ^frontend/

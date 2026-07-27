@@ -37,11 +37,7 @@ type CustomerAnalytics = {
 };
 
 type AnalyticsStatus =
-  | "idle"
-  | "loading"
-  | "available"
-  | "unavailable"
-  | "error";
+  "idle" | "loading" | "available" | "unavailable" | "error";
 
 type MetricTileProps = {
   icon: ReactNode;

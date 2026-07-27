@@ -2,48 +2,39 @@
   "name": "odoo-whatsapp-cloud-api-webui",
   "version": "0.1.0",
   "private": true,
-  "resolutions": {
-    "qs": "^6.14.2",
-    "@modelcontextprotocol/sdk": "^1.26.0",
-    "vite": "^5.4.21",
-    "esbuild": "^0.25.0",
-    "fast-uri": "^3.1.2",
-    "flatted": "^3.4.2",
-    "rollup": "^4.59.0",
-    "tar": "^7.5.11",
-    "js-yaml": "^4.1.1",
-    "postcss": "^8.5.10"
+  "overrides": {
+    "postcss": "^8.5.23",
+    "sharp": "^0.35.3"
   },
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "test": "vitest",
     "prettier": "prettier --check .",
     "prettier:fix": "prettier --write .",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@phosphor-icons/react": "^2.1.8",
-    "dayjs": "^1.11.13",
-    "motion": "^12.12.1",
-    "next": "15.5.18",
-    "openai": "^6.5.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "@phosphor-icons/react": "^2.1.10",
+    "dayjs": "^1.11.21",
+    "motion": "^12.42.2",
+    "next": "16.2.12",
+    "openai": "^6.49.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3",
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "15.3.2",
-    "prettier": "^3.6.2",
-    "tailwindcss": "^4",
-    "typescript": "^5",
-    "vitest": "^2.1.0"
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^24",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "16.2.12",
+    "prettier": "^3.9.6",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
   }
 }
