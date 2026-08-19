@@ -33,7 +33,12 @@ class WhatsAppTemplate(models.Model):
             ("AUTHENTICATION", "Authentication"),
         ],
     )
-    language = fields.Char(string="Language Code", help="e.g., en_US, tr")
+    language = fields.Char(string="WhatsApp Language Code", help="e.g., en_US, tr")
+    language_id = fields.Many2one(
+        comodel_name="res.lang",
+        string="Rendering Language",
+        help="Language used to render values from the associated Odoo record.",
+    )
 
     # WABA association (templates belong to WABA, not individual backends)
     waba_id = fields.Char(
@@ -220,6 +225,7 @@ class WhatsAppTemplate(models.Model):
         if not text:
             return ""
 
+        self, record = self._with_render_language(record)
         result = text
 
         # Get variables for this component
@@ -245,6 +251,7 @@ class WhatsAppTemplate(models.Model):
             str: Fully rendered message text
         """
         self.ensure_one()
+        self, record = self._with_render_language(record)
         parts = []
 
         # Render header
@@ -307,6 +314,7 @@ class WhatsAppTemplate(models.Model):
         if not url:
             return ""
 
+        self, record = self._with_render_language(record)
         result = url
 
         # Get variables for this button
@@ -331,6 +339,7 @@ class WhatsAppTemplate(models.Model):
             dict: WhatsApp API template payload
         """
         self.ensure_one()
+        self, record = self._with_render_language(record)
 
         components = []
 
@@ -413,6 +422,18 @@ class WhatsAppTemplate(models.Model):
             payload["components"] = components
 
         return payload
+
+    def _with_render_language(self, record):
+        """Apply the template language to every record involved in rendering."""
+        self.ensure_one()
+        if not self.language_id:
+            return self, record
+
+        context = {"lang": self.language_id.code}
+        template = self.with_context(**context)
+        if record:
+            record = record.with_context(**context)
+        return template, record
 
 
 class WhatsAppTemplateVariable(models.Model):

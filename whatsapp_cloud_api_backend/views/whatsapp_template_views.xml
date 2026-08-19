@@ -16,6 +16,7 @@
                 />
                 <field name="category" />
                 <field name="language" />
+                <field name="language_id" optional="show" />
                 <field name="model_id" optional="show" />
                 <field name="variable_count" string="Variables" />
                 <field name="last_synced" optional="hide" />
@@ -87,6 +88,7 @@
                             <field name="last_synced" readonly="1" />
                         </group>
                         <group string="Odoo Configuration">
+                            <field name="language_id" options="{'no_create': True}" />
                             <field
                                 name="model_id"
                                 options="{'no_create': True}"
@@ -187,6 +189,7 @@
                 <field name="name" />
                 <field name="category" />
                 <field name="language" />
+                <field name="language_id" />
                 <filter
                     name="approved"
                     string="Approved"
