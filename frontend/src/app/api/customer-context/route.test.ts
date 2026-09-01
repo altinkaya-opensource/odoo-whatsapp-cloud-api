@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { customerContextCache } from "@/app/lib/customer-context-cache";
 
 const mocks = vi.hoisted(() => {
   const sessionClient = {
@@ -49,6 +50,8 @@ const originalEnv = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  customerContextCache.clear();
+  customerContextCache.stopCleanup();
   process.env.ODOO_JSONRPC_HOST = "odoo.test";
   process.env.ODOO_JSONRPC_DATABASE = "16test2";
   process.env.ODOO_JSONRPC_PROTOCOL = "http";
@@ -56,6 +59,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  customerContextCache.clear();
+  customerContextCache.stopCleanup();
   for (const [key, value] of Object.entries(originalEnv)) {
     const environmentKey = `ODOO_JSONRPC_${key.toUpperCase()}`;
     if (value === undefined) {
@@ -132,5 +137,31 @@ describe("GET /api/customer-context", () => {
     expect(await response.json()).toEqual({ analytics: { available: false } });
     expect(mocks.sessionClient.read).not.toHaveBeenCalled();
     expect(mocks.sessionClient.call).not.toHaveBeenCalled();
+  });
+
+  it("reuses cached analytics for the same session and commercial partner", async () => {
+    mocks.sessionClient.searchRead.mockResolvedValue([
+      { id: 77, partner_id: [12, "Contact"] },
+    ]);
+    mocks.sessionClient.read
+      .mockResolvedValueOnce([
+        { id: 12, commercial_partner_id: [10, "Commercial customer"] },
+      ])
+      .mockResolvedValueOnce([{ id: 10 }])
+      .mockResolvedValueOnce([
+        { id: 12, commercial_partner_id: [10, "Commercial customer"] },
+      ])
+      .mockResolvedValueOnce([{ id: 10 }]);
+    mocks.sessionClient.call.mockResolvedValue(summary);
+    mocks.sessionClient.count.mockResolvedValue(5);
+
+    const first = await GET(requestFor("77"));
+    const second = await GET(requestFor("88"));
+
+    expect(first.status).toBe(200);
+    expect(await second.json()).toEqual(await first.json());
+    expect(mocks.sessionClient.call).toHaveBeenCalledTimes(1);
+    expect(mocks.sessionClient.count).toHaveBeenCalledTimes(1);
+    expect(mocks.sessionClient.searchRead).toHaveBeenCalledTimes(2);
   });
 });

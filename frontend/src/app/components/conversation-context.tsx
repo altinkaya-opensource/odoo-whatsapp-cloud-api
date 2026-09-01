@@ -39,6 +39,41 @@ type CustomerAnalytics = {
 type AnalyticsStatus =
   "idle" | "loading" | "available" | "unavailable" | "error";
 
+type CachedClientAnalytics = {
+  analytics: CustomerAnalytics | null;
+  status: "available" | "unavailable";
+  timestamp: number;
+};
+
+const CLIENT_ANALYTICS_TTL_MS = 15 * 60 * 1000;
+const clientAnalyticsCache = new Map<string, CachedClientAnalytics>();
+
+const getClientCachedAnalytics = (
+  threadId: string
+): CachedClientAnalytics | null => {
+  const entry = clientAnalyticsCache.get(threadId);
+  if (!entry) {
+    return null;
+  }
+
+  if (Date.now() - entry.timestamp > CLIENT_ANALYTICS_TTL_MS) {
+    clientAnalyticsCache.delete(threadId);
+    return null;
+  }
+
+  return entry;
+};
+
+const setClientCachedAnalytics = (
+  threadId: string,
+  entry: Omit<CachedClientAnalytics, "timestamp">
+): void => {
+  clientAnalyticsCache.set(threadId, {
+    ...entry,
+    timestamp: Date.now(),
+  });
+};
+
 type MetricTileProps = {
   icon: ReactNode;
   label: string;
@@ -147,12 +182,21 @@ export default function ConversationContext() {
   useEffect(() => {
     const controller = new AbortController();
 
-    setAnalytics(null);
     if (!chatId || !sessionId || !isCustomerConversation) {
+      setAnalytics(null);
       setAnalyticsStatus("idle");
       return () => controller.abort();
     }
 
+    const cacheKey = `${chatId}:${partnerId}`;
+    const cached = getClientCachedAnalytics(cacheKey);
+    if (cached) {
+      setAnalytics(cached.analytics);
+      setAnalyticsStatus(cached.status);
+      return () => controller.abort();
+    }
+
+    setAnalytics(null);
     setAnalyticsStatus("loading");
 
     fetch(`/api/customer-context?threadId=${encodeURIComponent(chatId)}`, {
@@ -166,11 +210,19 @@ export default function ConversationContext() {
         }
 
         if (isCustomerAnalytics(data.analytics)) {
+          setClientCachedAnalytics(cacheKey, {
+            analytics: data.analytics,
+            status: "available",
+          });
           setAnalytics(data.analytics);
           setAnalyticsStatus("available");
           return;
         }
 
+        setClientCachedAnalytics(cacheKey, {
+          analytics: null,
+          status: "unavailable",
+        });
         setAnalyticsStatus("unavailable");
       })
       .catch((error: unknown) => {
