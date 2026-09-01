@@ -188,7 +188,7 @@ export default function ConversationContext() {
       return () => controller.abort();
     }
 
-    const cacheKey = `${chatId}:${partnerId}`;
+    const cacheKey = `${sessionId}:${chatId}:${partnerId}`;
     const cached = getClientCachedAnalytics(cacheKey);
     if (cached) {
       setAnalytics(cached.analytics);
