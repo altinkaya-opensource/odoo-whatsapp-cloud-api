@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { OdooClient } from "@/app/lib/odoo/jsonrpc";
+import { OdooClient, OdooSessionClient } from "@/app/lib/odoo/jsonrpc";
+import {
+  type CustomerAnalytics,
+  customerContextCache,
+} from "@/app/lib/customer-context-cache";
 
 const REQUIRED_ENV_VARS = [
   "ODOO_JSONRPC_HOST",
@@ -28,18 +32,6 @@ type SummaryEntry = {
 
 type PartnerSummary = Record<string, SummaryEntry | undefined>;
 
-type CustomerAnalytics = {
-  available: boolean;
-  periodDays?: number;
-  currency?: "USD";
-  totalSalesUsd?: number;
-  confirmedOrderCount?: number;
-  averageInvoiceValueUsd?: number;
-  daysSinceLastInvoice?: number | null;
-  invoicesPerMonth?: number | null;
-  uniqueProductsCount?: number | null;
-};
-
 const ensureEnv = () => {
   const missing = REQUIRED_ENV_VARS.filter((name) => !process.env[name]);
   if (missing.length > 0) {
@@ -62,6 +54,53 @@ const summaryNumber = (summary: PartnerSummary, key: string): number | null => {
 };
 
 const unavailable = (): CustomerAnalytics => ({ available: false });
+
+const loadPartnerAnalytics = async (
+  sessionClient: OdooSessionClient,
+  commercialPartnerId: number
+): Promise<CustomerAnalytics> => {
+  const summary = await sessionClient.call<PartnerSummary>(
+    "res.partner",
+    "get_partner_summary",
+    [[commercialPartnerId]],
+    {},
+    false
+  );
+  const totalSalesUsd = summaryNumber(summary, "total_order_amount_usd");
+  const averageInvoiceValueUsd = summaryNumber(summary, "avg_order_value_usd");
+
+  if (totalSalesUsd === null || averageInvoiceValueUsd === null) {
+    return unavailable();
+  }
+
+  const periodStart = new Date();
+  periodStart.setUTCDate(periodStart.getUTCDate() - ANALYTICS_PERIOD_DAYS);
+  const periodEndExclusive = new Date();
+  periodEndExclusive.setUTCDate(periodEndExclusive.getUTCDate() + 1);
+  const confirmedOrderCount = await sessionClient.count("sale.order", [
+    ["partner_id", "child_of", commercialPartnerId],
+    ["state", "in", ["sale", "done"]],
+    ["date_order", ">=", periodStart.toISOString().slice(0, 10)],
+    ["date_order", "<", periodEndExclusive.toISOString().slice(0, 10)],
+  ]);
+  const daysSinceLastInvoice = summaryNumber(summary, "days_since_last_order");
+  const invoicesPerMonth = summaryNumber(summary, "order_frequency");
+  const uniqueProductsCount = summaryNumber(summary, "unique_products_count");
+
+  return {
+    available: true,
+    periodDays: ANALYTICS_PERIOD_DAYS,
+    currency: "USD",
+    totalSalesUsd,
+    confirmedOrderCount,
+    averageInvoiceValueUsd,
+    daysSinceLastInvoice:
+      daysSinceLastInvoice === null ? null : Math.max(0, daysSinceLastInvoice),
+    invoicesPerMonth,
+    uniqueProductsCount:
+      uniqueProductsCount === null ? null : Math.max(0, uniqueProductsCount),
+  };
+};
 
 export async function GET(request: NextRequest) {
   try {
@@ -154,59 +193,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ analytics: unavailable() });
     }
 
-    const summary = await sessionClient.call<PartnerSummary>(
-      "res.partner",
-      "get_partner_summary",
-      [[commercialPartnerId]],
-      {},
-      false
-    );
-    const totalSalesUsd = summaryNumber(summary, "total_order_amount_usd");
-    const averageInvoiceValueUsd = summaryNumber(
-      summary,
-      "avg_order_value_usd"
+    const analytics = await customerContextCache.getOrLoad(
+      sessionId,
+      commercialPartnerId,
+      () => loadPartnerAnalytics(sessionClient, commercialPartnerId)
     );
 
-    if (totalSalesUsd === null || averageInvoiceValueUsd === null) {
-      return NextResponse.json({ analytics: unavailable() });
-    }
-
-    const periodStart = new Date();
-    periodStart.setUTCDate(periodStart.getUTCDate() - ANALYTICS_PERIOD_DAYS);
-    const periodEndExclusive = new Date();
-    periodEndExclusive.setUTCDate(periodEndExclusive.getUTCDate() + 1);
-    const confirmedOrderCount = await sessionClient.count("sale.order", [
-      ["partner_id", "child_of", commercialPartnerId],
-      ["state", "in", ["sale", "done"]],
-      ["date_order", ">=", periodStart.toISOString().slice(0, 10)],
-      ["date_order", "<", periodEndExclusive.toISOString().slice(0, 10)],
-    ]);
-    const daysSinceLastInvoice = summaryNumber(
-      summary,
-      "days_since_last_order"
-    );
-    const invoicesPerMonth = summaryNumber(summary, "order_frequency");
-    const uniqueProductsCount = summaryNumber(summary, "unique_products_count");
-
-    return NextResponse.json({
-      analytics: {
-        available: true,
-        periodDays: ANALYTICS_PERIOD_DAYS,
-        currency: "USD",
-        totalSalesUsd,
-        confirmedOrderCount,
-        averageInvoiceValueUsd,
-        daysSinceLastInvoice:
-          daysSinceLastInvoice === null
-            ? null
-            : Math.max(0, daysSinceLastInvoice),
-        invoicesPerMonth,
-        uniqueProductsCount:
-          uniqueProductsCount === null
-            ? null
-            : Math.max(0, uniqueProductsCount),
-      } satisfies CustomerAnalytics,
-    });
+    return NextResponse.json({ analytics });
   } catch (error) {
     console.error("[CustomerContext] Failed to load analytics:", error);
     return NextResponse.json(
