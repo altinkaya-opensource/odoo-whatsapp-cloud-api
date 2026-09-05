@@ -231,6 +231,7 @@ class WhatsAppMessageReadStatus(models.Model):
         string="Message",
         required=True,
         ondelete="cascade",
+        index=True,
         help="Message that has been read.",
     )
     user_id = fields.Many2one(
@@ -238,6 +239,7 @@ class WhatsAppMessageReadStatus(models.Model):
         string="User",
         required=True,
         ondelete="cascade",
+        index=True,
         help="User who has read the message.",
     )
     is_read = fields.Boolean(
