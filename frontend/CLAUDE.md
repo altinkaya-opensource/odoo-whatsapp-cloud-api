@@ -178,9 +178,11 @@ Firefox drop a request that did not come from a click.
 
 ## Theme System
 
-Dark and light, stored in localStorage, driven by `data-theme` on the root
-element. Every colour comes from a CSS variable defined in
-`src/app/globals.css`, so it follows the theme:
+Dark and light are driven by `data-theme` on the root element; Plum, Cobalt
+and Verdant palettes use `data-color-scheme`. Both preferences are stored in
+localStorage. The palette covers surfaces, text, borders, inputs, scrollbars
+and message bubbles. Status colours keep their semantic meaning. Every
+colour comes from a CSS variable defined in `src/app/globals.css`:
 
 ```typescript
 className = "bg-[rgb(var(--bg-primary))]";
@@ -190,8 +192,9 @@ className = "border-[rgb(var(--border-primary)/var(--border-primary-opacity))]";
 
 Hard-coded colours (`bg-black`, `text-white/50`, `border-gray-300`) do not
 follow the theme. `globals.css` has the full variable list. A new colour goes
-into both the `:root[data-theme="dark"]` and `:root[data-theme="light"]` blocks
-as raw RGB values, without the `rgb()` wrapper.
+into both mode blocks and the Cobalt/Verdant overrides when palette-dependent,
+as raw RGB values (or aliases to existing tokens), without the `rgb()` wrapper.
+The mode blocks provide the default Plum palette.
 
 ```typescript
 import { useTheme } from "@/app/hooks/use-theme";

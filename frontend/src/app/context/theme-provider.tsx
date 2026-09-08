@@ -49,48 +49,6 @@ const DEFAULT_APPEARANCE: AppearancePreferences = {
 const STORAGE_KEY = "app.theme";
 const APPEARANCE_STORAGE_KEY = "app.appearance";
 
-const ACCENT_TOKENS: Record<
-  ColorScheme,
-  Record<Theme, { primary: string; active: string; hover: string }>
-> = {
-  plum: {
-    dark: {
-      primary: "125 91 118",
-      active: "163 121 153",
-      hover: "125 91 118",
-    },
-    light: {
-      primary: "113 75 103",
-      active: "89 54 82",
-      hover: "113 75 103",
-    },
-  },
-  cobalt: {
-    dark: {
-      primary: "88 144 231",
-      active: "129 176 243",
-      hover: "88 144 231",
-    },
-    light: {
-      primary: "37 104 190",
-      active: "24 78 151",
-      hover: "37 104 190",
-    },
-  },
-  verdant: {
-    dark: {
-      primary: "54 177 127",
-      active: "91 207 157",
-      hover: "54 177 127",
-    },
-    light: {
-      primary: "20 135 85",
-      active: "13 108 67",
-      hover: "20 135 85",
-    },
-  },
-};
-
 const isTheme = (value: unknown): value is Theme =>
   typeof value === "string" && THEMES.includes(value as Theme);
 
@@ -165,22 +123,9 @@ export function ThemeProvider({ children }: PropsWithChildren) {
       );
 
       document.documentElement.setAttribute("data-theme", theme);
+      document.documentElement.setAttribute("data-color-scheme", colorScheme);
       document.documentElement.setAttribute("data-background", background);
       document.documentElement.setAttribute("data-text-size", textSize);
-
-      const accent = ACCENT_TOKENS[colorScheme][theme];
-      document.documentElement.style.setProperty(
-        "--accent-primary",
-        accent.primary
-      );
-      document.documentElement.style.setProperty(
-        "--accent-active",
-        accent.active
-      );
-      document.documentElement.style.setProperty(
-        "--accent-hover",
-        accent.hover
-      );
     }
   }, [background, colorScheme, isInitialized, textSize, theme]);
 

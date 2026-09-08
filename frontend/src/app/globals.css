@@ -56,9 +56,9 @@
 }
 
 /*
- * Product tokens
- * Odoo actions use plum, WhatsApp/channel state uses green. Keeping those
- * meanings separate makes a busy operator workspace faster to scan.
+ * Workspace palettes. Plum is the default; color-scheme overrides below
+ * recolor surfaces, text and messages together. Status colors retain their
+ * meaning independently of the selected palette.
  */
 :root[data-theme="dark"] {
   color-scheme: dark;
@@ -68,7 +68,7 @@
   --bg-tertiary: 42 39 49;
   --bg-quaternary: 55 51 63;
   --bg-sidebar: 24 22 30;
-  --bg-mobile-nav: 24 22 30;
+  --bg-mobile-nav: var(--bg-sidebar);
   --bg-card: 35 32 42;
   --bg-card-opacity: 1;
   --bg-secondary-opacity: 1;
@@ -77,12 +77,12 @@
   --bg-sidebar-opacity: 1;
   --bg-mobile-nav-opacity: 1;
 
-  --bg-chat-outgoing: 34 96 66;
-  --message-link-outgoing: 195 255 225;
-  --message-link-outgoing-hover: 224 255 239;
-  --bg-chat-incoming: 42 39 49;
+  --bg-chat-outgoing: 82 49 74;
+  --message-link-outgoing: 255 214 243;
+  --message-link-outgoing-hover: 255 237 250;
+  --bg-chat-incoming: var(--bg-tertiary);
   --bg-chat-incoming-opacity: 1;
-  --bg-reply-preview: 29 55 44;
+  --bg-reply-preview: 52 36 49;
   --bg-reply-preview-opacity: 1;
 
   --text-primary: 245 242 248;
@@ -100,7 +100,7 @@
 
   --accent-primary: 125 91 118;
   --accent-active: 163 121 153;
-  --accent-hover: 125 91 118;
+  --accent-hover: var(--accent-primary);
   --accent-hover-opacity: 0.2;
 
   --status-error: 251 113 133;
@@ -111,16 +111,16 @@
   --scrollbar-thumb: 157 147 169;
   --scrollbar-thumb-opacity: 0.38;
   --scrollbar-thumb-hover-opacity: 0.58;
-  --scrollbar-thumb-active: 163 121 153;
+  --scrollbar-thumb-active: var(--accent-active);
   --scrollbar-thumb-active-opacity: 0.82;
 
-  --bg-input: 31 29 37;
+  --bg-input: var(--bg-secondary);
   --bg-input-opacity: 1;
-  --bg-button-secondary: 55 51 63;
+  --bg-button-secondary: var(--bg-quaternary);
   --bg-button-secondary-opacity: 1;
   --bg-overlay: 9 8 12;
   --bg-overlay-opacity: 0.72;
-  --bg-tooltip: 55 51 63;
+  --bg-tooltip: var(--bg-quaternary);
   --bg-tooltip-opacity: 1;
 }
 
@@ -132,8 +132,8 @@
   --bg-tertiary: 234 231 238;
   --bg-quaternary: 223 218 228;
   --bg-sidebar: 252 251 253;
-  --bg-mobile-nav: 252 251 253;
-  --bg-card: 255 255 255;
+  --bg-mobile-nav: var(--bg-sidebar);
+  --bg-card: 255 251 254;
   --bg-card-opacity: 1;
   --bg-secondary-opacity: 1;
   --bg-tertiary-opacity: 1;
@@ -141,12 +141,12 @@
   --bg-sidebar-opacity: 1;
   --bg-mobile-nav-opacity: 1;
 
-  --bg-chat-outgoing: 216 245 228;
-  --message-link-outgoing: 8 86 52;
-  --message-link-outgoing-hover: 5 68 41;
-  --bg-chat-incoming: 255 255 255;
+  --bg-chat-outgoing: 240 219 234;
+  --message-link-outgoing: 101 42 82;
+  --message-link-outgoing-hover: 76 27 61;
+  --bg-chat-incoming: var(--bg-card);
   --bg-chat-incoming-opacity: 1;
-  --bg-reply-preview: 233 245 238;
+  --bg-reply-preview: 246 233 242;
   --bg-reply-preview-opacity: 1;
 
   --text-primary: 38 35 43;
@@ -154,7 +154,7 @@
   --text-secondary-opacity: 1;
   --text-tertiary-opacity: 0.82;
   --text-quaternary-opacity: 0.64;
-  --text-message-time: 100 92 109;
+  --text-message-time: var(--text-secondary);
   --text-message-time-opacity: 0.72;
 
   --border-primary: 205 199 211;
@@ -164,7 +164,7 @@
 
   --accent-primary: 113 75 103;
   --accent-active: 89 54 82;
-  --accent-hover: 113 75 103;
+  --accent-hover: var(--accent-primary);
   --accent-hover-opacity: 0.1;
 
   --status-error: 191 51 65;
@@ -175,17 +175,101 @@
   --scrollbar-thumb: 167 157 176;
   --scrollbar-thumb-opacity: 0.62;
   --scrollbar-thumb-hover-opacity: 0.86;
-  --scrollbar-thumb-active: 113 75 103;
+  --scrollbar-thumb-active: var(--accent-primary);
   --scrollbar-thumb-active-opacity: 0.9;
 
-  --bg-input: 255 255 255;
+  --bg-input: var(--bg-card);
   --bg-input-opacity: 1;
-  --bg-button-secondary: 242 240 244;
+  --bg-button-secondary: var(--bg-secondary);
   --bg-button-secondary-opacity: 1;
-  --bg-overlay: 38 35 43;
+  --bg-overlay: var(--text-primary);
   --bg-overlay-opacity: 0.46;
-  --bg-tooltip: 38 35 43;
+  --bg-tooltip: var(--text-primary);
   --bg-tooltip-opacity: 1;
+}
+
+:root[data-theme="dark"][data-color-scheme="cobalt"] {
+  --bg-primary: 17 24 37;
+  --bg-secondary: 24 34 50;
+  --bg-tertiary: 33 46 65;
+  --bg-quaternary: 45 60 82;
+  --bg-sidebar: 19 28 44;
+  --bg-card: 27 39 57;
+  --bg-chat-outgoing: 31 65 111;
+  --bg-reply-preview: 25 42 66;
+  --message-link-outgoing: 207 229 255;
+  --message-link-outgoing-hover: 234 244 255;
+  --text-primary: 239 245 255;
+  --text-secondary: 180 196 218;
+  --text-message-time: 201 218 240;
+  --border-primary: 85 112 146;
+  --border-secondary: 119 146 182;
+  --accent-primary: 88 144 231;
+  --accent-active: 129 176 243;
+  --scrollbar-thumb: 136 160 191;
+  --bg-overlay: 5 11 21;
+}
+
+:root[data-theme="light"][data-color-scheme="cobalt"] {
+  --bg-primary: 237 244 253;
+  --bg-secondary: 225 236 250;
+  --bg-tertiary: 212 227 247;
+  --bg-quaternary: 195 215 240;
+  --bg-sidebar: 245 249 255;
+  --bg-card: 248 251 255;
+  --bg-chat-outgoing: 208 227 253;
+  --bg-reply-preview: 228 239 254;
+  --message-link-outgoing: 23 70 133;
+  --message-link-outgoing-hover: 16 51 100;
+  --text-primary: 25 44 70;
+  --text-secondary: 73 99 133;
+  --border-primary: 173 194 222;
+  --border-secondary: 133 161 199;
+  --accent-primary: 37 104 190;
+  --accent-active: 24 78 151;
+  --scrollbar-thumb: 132 159 193;
+}
+
+:root[data-theme="dark"][data-color-scheme="verdant"] {
+  --bg-primary: 16 28 24;
+  --bg-secondary: 23 39 32;
+  --bg-tertiary: 32 52 43;
+  --bg-quaternary: 43 67 55;
+  --bg-sidebar: 18 33 27;
+  --bg-card: 26 44 36;
+  --bg-chat-outgoing: 28 83 59;
+  --bg-reply-preview: 24 49 37;
+  --message-link-outgoing: 195 255 225;
+  --message-link-outgoing-hover: 224 255 239;
+  --text-primary: 238 249 242;
+  --text-secondary: 178 204 190;
+  --text-message-time: 202 226 212;
+  --border-primary: 81 122 101;
+  --border-secondary: 115 157 137;
+  --accent-primary: 54 177 127;
+  --accent-active: 91 207 157;
+  --scrollbar-thumb: 132 171 151;
+  --bg-overlay: 5 15 10;
+}
+
+:root[data-theme="light"][data-color-scheme="verdant"] {
+  --bg-primary: 237 247 240;
+  --bg-secondary: 223 239 228;
+  --bg-tertiary: 208 230 215;
+  --bg-quaternary: 189 216 199;
+  --bg-sidebar: 245 252 247;
+  --bg-card: 249 253 250;
+  --bg-chat-outgoing: 207 237 218;
+  --bg-reply-preview: 227 243 233;
+  --message-link-outgoing: 8 86 52;
+  --message-link-outgoing-hover: 5 68 41;
+  --text-primary: 26 47 36;
+  --text-secondary: 71 104 86;
+  --border-primary: 172 204 184;
+  --border-secondary: 133 176 150;
+  --accent-primary: 20 135 85;
+  --accent-active: 13 108 67;
+  --scrollbar-thumb: 132 170 145;
 }
 
 html,
@@ -224,7 +308,7 @@ a[href] {
   outline-offset: 2px;
 }
 
-/* Sent bubbles are green, so Odoo's plum accent is not used for message links. */
+/* Message links use contrast colors matched to the selected bubble palette. */
 .message-bubble--outgoing .message-link {
   color: rgb(var(--message-link-outgoing));
   font-weight: 600;
@@ -331,11 +415,11 @@ a[href] {
 .surface-card {
   background: rgb(var(--bg-card));
   border: 1px solid rgb(var(--border-primary) / var(--border-primary-opacity));
-  box-shadow: 0 16px 34px rgb(38 35 43 / 0.08);
+  box-shadow: 0 16px 34px rgb(var(--bg-overlay) / 0.08);
 }
 
 :root[data-theme="dark"] .surface-card {
-  box-shadow: 0 16px 34px rgb(0 0 0 / 0.22);
+  box-shadow: 0 16px 34px rgb(var(--bg-overlay) / 0.22);
 }
 
 .control-field {
