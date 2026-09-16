@@ -1,12 +1,15 @@
 # Copyright (C) 2025 Ahmet Yiğit Budak
 # License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl-3.0.html)
 import json
+import logging
 import time
 
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError
 
 from .frontend_webhook import WebhookSender
+
+_logger = logging.getLogger(__name__)
 
 
 class WhatsAppThread(models.Model):
@@ -284,6 +287,13 @@ class WhatsAppThread(models.Model):
         stored_request = json.loads(json.dumps(base_payload))
         response = backend._call_whatsapp_api("messages", base_payload)
         message_info = (response.get("messages") or [{}])[0]
+        if message_type != "reaction" and not message_info.get("id"):
+            _logger.error(
+                "WhatsApp send returned no message ID for backend %s: %s",
+                backend.id,
+                response,
+            )
+            raise UserError(_("WhatsApp API did not return a message ID."))
         raw_status = message_info.get("message_status")
         status = self._map_outgoing_status(raw_status)
         if not raw_status and message_info.get("id"):

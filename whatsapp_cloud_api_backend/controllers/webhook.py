@@ -21,7 +21,8 @@ from datetime import timedelta
 from http import HTTPStatus
 
 import requests
-from werkzeug.exceptions import Forbidden
+from psycopg2 import OperationalError
+from werkzeug.exceptions import BadRequest, Forbidden
 
 from odoo import _, fields, http
 from odoo.http import request
@@ -65,7 +66,7 @@ class WhatsAppCloudAPIWebhookController(http.Controller):
 
     @http.route(
         _webhook_url,
-        type="json",
+        type="http",
         methods=["POST"],
         auth="public",
         csrf=False,
@@ -75,19 +76,26 @@ class WhatsAppCloudAPIWebhookController(http.Controller):
         Endpoint to handle WhatsApp Cloud API webhooks.
         """
         raw_body = request.httprequest.data
-        payload = json.loads(raw_body.decode("utf-8"))
+        try:
+            payload = json.loads(raw_body.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError) as exc:
+            raise BadRequest(_("Invalid JSON payload")) from exc
+        if not isinstance(payload, dict):
+            raise BadRequest(_("Expected a JSON object"))
         backend = self._find_backend_from_payload(payload)
         if not backend:
             _logger.warning(
                 "WhatsApp webhook rejected: unable to resolve backend for payload: %s",
                 payload,
             )
-            return {"error": "invalid_webhook"}
+            return request.make_json_response({"error": "invalid_webhook"}, status=400)
         if not self._verify_payload_signature(backend, raw_body):
-            return {"error": "invalid_signature"}
+            return request.make_json_response(
+                {"error": "invalid_signature"}, status=403
+            )
         self._use_backend_language(backend)
         self._handle_webhook_payload(backend, payload)
-        return {"status": "processed"}
+        return request.make_json_response({"status": "processed"})
 
     def _verify_payload_signature(self, backend, raw_body):
         """Check Meta's X-Hub-Signature-256 header against the app secret.
@@ -178,6 +186,41 @@ class WhatsAppCloudAPIWebhookController(http.Controller):
                     continue
                 for message in value.get("messages", []):
                     self._process_incoming_message(backend, value, message, payload)
+                for status in value.get("statuses", []):
+                    self._process_message_status(backend, status)
+
+    def _process_message_status(self, backend, status):
+        """Keep Meta's delivery result and failure details on the outgoing message."""
+        status_order = {"sent": 1, "failed": 2, "delivered": 3, "read": 4}
+        new_status = status.get("status")
+        if not status.get("id") or new_status not in status_order:
+            return
+        message = (
+            request.env["whatsapp.message"]
+            .sudo()
+            .search(
+                [
+                    ("backend_id", "=", backend.id),
+                    ("direction", "=", "outgoing"),
+                    ("message_id", "=", status["id"]),
+                ],
+                limit=1,
+            )
+        )
+        if not message or status_order[new_status] < status_order.get(
+            message.status, 0
+        ):
+            return
+        payload = dict(message.payload or {})
+        payload["status_update"] = status
+        message.write({"status": new_status, "payload": payload})
+        if new_status == "failed":
+            _logger.warning(
+                "WhatsApp delivery failed for message %s on backend %s: %s",
+                message.id,
+                backend.id,
+                status.get("errors"),
+            )
 
     def _process_incoming_message(self, backend, value, message, full_payload):
         message_model = request.env["whatsapp.message"].sudo()
@@ -251,9 +294,25 @@ class WhatsAppCloudAPIWebhookController(http.Controller):
                 or (backend.chatbot_id.greeting_only and msg_type == "media")
             )
         ):
-            self._handle_chatbot_interaction(
-                backend, thread, partner, message_record.body or ""
-            )
+            try:
+                # Flush the incoming message before isolating chatbot writes.
+                with request.env.cr.savepoint():
+                    self._handle_chatbot_interaction(
+                        backend, thread, partner, message_record.body or ""
+                    )
+            except OperationalError:
+                # Let Odoo retry concurrency failures with a fresh transaction.
+                raise
+            except Exception as exc:
+                _logger.exception(
+                    "WhatsApp automatic reply failed for incoming message %s "
+                    "on backend %s; incoming message retained",
+                    message_record.id,
+                    backend.id,
+                )
+                message_record.write(
+                    {"payload": dict(full_payload, chatbot_error=str(exc))}
+                )
 
     def _map_message_type(self, msg_type_raw):
         if msg_type_raw in {"image", "video", "audio", "document", "sticker"}:

@@ -172,18 +172,30 @@ class WhatsAppBackend(models.Model):
                 error_content = response.text
 
             if isinstance(error_content, dict):
+                error = error_content.get("error")
+                if not isinstance(error, dict):
+                    error = {}
                 error_message = (
-                    error_content.get("error", {}).get("message")
+                    error.get("message")
                     or error_content.get("message")
                     or str(error_content)
                 )
+                if error.get("code") is not None:
+                    error_message = f"[{error['code']}] {error_message}"
+                error_data = error.get("error_data")
+                details = (
+                    error_data.get("details") if isinstance(error_data, dict) else None
+                )
+                if details:
+                    error_message = f"{error_message}: {details}"
             else:
                 error_message = error_content
 
             _logger.error(
-                "WhatsApp API error (status %s): %s",
+                "WhatsApp API error for backend %s (HTTP %s): %s",
+                self.id,
                 response.status_code,
-                error_message,
+                error_content,
             )
             raise UserError(_("WhatsApp API error: %s") % error_message)
 
