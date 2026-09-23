@@ -72,6 +72,7 @@ export async function GET(request: NextRequest) {
   const offsetParam = request.nextUrl.searchParams.get("offset");
   const searchQuery = request.nextUrl.searchParams.get("search");
   const backendIdParam = request.nextUrl.searchParams.get("backendId");
+  const unreadOnly = request.nextUrl.searchParams.get("unread") === "1";
   const limit = limitParam ? Number(limitParam) : 30;
   const offset = offsetParam ? Number(offsetParam) : 0;
   const backendId = backendIdParam ? Number(backendIdParam) : null;
@@ -127,6 +128,12 @@ export async function GET(request: NextRequest) {
     // paging through every backend's threads to find one backend's.
     if (backendId !== null) {
       domain.push(["backend_id", "=", backendId]);
+    }
+
+    // Same for the unread filter: in the browser it paged through every
+    // thread looking for unread ones, one request per page.
+    if (unreadOnly) {
+      domain.push(["unread_count", ">", 0]);
     }
 
     if (searchQuery && searchQuery.trim().length > 0) {

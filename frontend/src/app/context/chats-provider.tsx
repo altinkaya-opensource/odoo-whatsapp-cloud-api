@@ -779,6 +779,9 @@ export default function ChatsProvider({
         if (selectedBackendId !== null) {
           url += `&backendId=${selectedBackendId}`;
         }
+        if (filter === Filters.UNREAD) {
+          url += "&unread=1";
+        }
 
         const response = await fetch(url, {
           headers: {
@@ -852,6 +855,7 @@ export default function ChatsProvider({
       includeThreadId,
       debouncedSearchQuery,
       selectedBackendId,
+      filter,
     ]
   );
 
