@@ -116,21 +116,12 @@ class WhatsAppMessage(models.Model):
         required=True,
     )
 
-    read_status_ids = fields.Many2many(
-        comodel_name="whatsapp.message.read.status",
-    )
-
     is_automated = fields.Boolean(
         string="Automated",
         compute="_compute_is_automated",
         store=True,
         help="Created by the system (crons, SMS fallback) or by the chatbot, "
         "which answers webhooks as the public user, rather than by an agent.",
-    )
-
-    is_read_by_me = fields.Boolean(
-        string="Read by Me",
-        compute="_compute_is_read_by_me",
     )
 
     _sql_constraints = [
@@ -146,25 +137,21 @@ class WhatsAppMessage(models.Model):
         for message in self:
             WebhookSender.send_message_webhook_payload(message, event_type)
 
+    def init(self):
+        """Index incoming messages by thread for the unread counts."""
+        res = super().init()
+        tools.create_index(
+            self.env.cr,
+            "whatsapp_message_incoming_thread_idx",
+            self._table,
+            ["thread_id", "id"],
+            where="direction = 'incoming'",
+        )
+        return res
+
     @api.model_create_multi
     def create(self, vals_list):
         res = super().create(vals_list)
-        for record in res:
-            ReadStatus = self.env["whatsapp.message.read.status"]
-            user_ids = record.backend_id.user_ids
-            for user in user_ids:
-                status = self.env["whatsapp.message.read.status"].create(
-                    {
-                        "message_id": record.id,
-                        "user_id": user.id,
-                        "is_read": record.direction == "outgoing",
-                        "read_timestamp": fields.Datetime.now()
-                        if record.direction == "outgoing"
-                        else None,
-                    }
-                )
-                ReadStatus |= status
-            record.read_status_ids = [(6, 0, ReadStatus.ids)]
 
         # Send webhook payload for message creation
         res.with_delay().send_webhook_payload("message.created")
@@ -184,23 +171,6 @@ class WhatsAppMessage(models.Model):
         for message in self:
             creator = message.create_uid
             message.is_automated = creator.id == SUPERUSER_ID or creator.share
-
-    def _compute_is_read_by_me(self):
-        for record in self:
-            read_status = record.read_status_ids.filtered(
-                lambda r: r.user_id == self.env.user
-            )
-            if read_status:
-                record.is_read_by_me = read_status.is_read
-            else:  #  if no read status found for the user, consider as read
-                record.is_read_by_me = True
-
-    def mark_as_read_by_user(self, user):
-        for record in self:
-            read_status = record.read_status_ids.filtered(lambda r: r.user_id == user)
-            if read_status and not read_status.is_read:
-                read_status.is_read = True
-                read_status.read_timestamp = fields.Datetime.now()
 
     def name_get(self):
         direction_labels = dict(self._fields["direction"].selection)
@@ -242,42 +212,4 @@ class WhatsAppMessage(models.Model):
                         ),
                         "file_size": attachment_record.file_size,
                     }
-        return res
-
-
-class WhatsAppMessageReadStatus(models.Model):
-    _name = "whatsapp.message.read.status"
-    _description = "WhatsApp Message Read Status"
-
-    message_id = fields.Many2one(
-        comodel_name="whatsapp.message",
-        string="Message",
-        required=True,
-        ondelete="cascade",
-        index=True,
-        help="Message that has been read.",
-    )
-    user_id = fields.Many2one(
-        comodel_name="res.users",
-        string="User",
-        required=True,
-        ondelete="cascade",
-        index=True,
-        help="User who has read the message.",
-    )
-    is_read = fields.Boolean(
-        default=False,
-    )
-    read_timestamp = fields.Datetime()
-
-    def init(self):
-        """Index unread statuses for the per-user badge lookup."""
-        res = super().init()
-        tools.create_index(
-            self.env.cr,
-            "whatsapp_message_read_status_unread_user_idx",
-            self._table,
-            ["user_id"],
-            where="is_read IS NULL OR is_read = FALSE",
-        )
         return res

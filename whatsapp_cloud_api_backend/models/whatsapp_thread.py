@@ -50,6 +50,11 @@ class WhatsAppThread(models.Model):
         readonly=True,
     )
     last_message_date = fields.Datetime(readonly=True, index=True)
+    last_incoming_message_id = fields.Many2one(
+        comodel_name="whatsapp.message",
+        readonly=True,
+        help="Newest customer message, compared with each reader's cursor.",
+    )
     last_message_preview = fields.Text(readonly=True)
 
     unread_count = fields.Integer(
@@ -123,29 +128,29 @@ class WhatsAppThread(models.Model):
 
     @api.depends_context("uid")
     def _compute_unread_count(self):
-        """Compute the current user's unread count for each thread.
+        """Count the current user's unread messages for each thread.
 
-        One search for the whole recordset instead of one per thread: the
-        chat list reads this field for every row it shows. Count per
-        message: mapping to thread_id would collapse each thread to one.
+        One aggregate query for the whole recordset: the chat list reads
+        this field for every row it shows.
         """
-        counts = {thread_id: 0 for thread_id in self.ids}
-
+        counts = {}
         if self.ids:
-            unread_messages = (
-                self.env["whatsapp.message.read.status"]
-                .search(
-                    [
-                        ("message_id.thread_id", "in", self.ids),
-                        ("is_read", "=", False),
-                        ("user_id", "=", self.env.user.id),
-                    ]
-                )
-                .message_id
+            self.env["whatsapp.message"].flush_model(["thread_id", "direction"])
+            self.env["whatsapp.thread.member"].flush_model()
+            self.env.cr.execute(
+                """
+                SELECT m.thread_id, count(*)
+                  FROM whatsapp_message m
+                  LEFT JOIN whatsapp_thread_member tm
+                         ON tm.thread_id = m.thread_id AND tm.user_id = %(uid)s
+                 WHERE m.thread_id IN %(thread_ids)s
+                   AND m.direction = 'incoming'
+                   AND m.id > COALESCE(tm.seen_message_cursor, 0)
+                 GROUP BY m.thread_id
+                """,
+                {"uid": self.env.uid, "thread_ids": tuple(self.ids)},
             )
-            for message in unread_messages:
-                counts[message.thread_id.id] += 1
-
+            counts = dict(self.env.cr.fetchall())
         for thread in self:
             thread.unread_count = counts.get(thread.id, 0)
 
@@ -154,26 +159,58 @@ class WhatsAppThread(models.Model):
         """Find the threads holding unread messages for the current user.
 
         Only ("unread_count", ">", 0) is supported: the chat list's unread
-        filter. A user can hold tens of thousands of unread statuses, so they
-        stay in a subquery instead of being loaded as records.
+        filter.
         """
         if (operator, value) != (">", 0):
             raise NotImplementedError(
                 f"Unsupported unread_count search: {operator} {value}"
             )
-        read_status = self.env["whatsapp.message.read.status"]
-        unread_statuses = read_status._search(
-            [("is_read", "=", False), ("user_id", "=", self.env.user.id)]
+        self.flush_model(["last_incoming_message_id"])
+        self.env["whatsapp.thread.member"].flush_model()
+        query = """
+            SELECT t.id
+              FROM whatsapp_thread t
+              LEFT JOIN whatsapp_thread_member tm
+                     ON tm.thread_id = t.id AND tm.user_id = %s
+             WHERE t.last_incoming_message_id > COALESCE(tm.seen_message_cursor, 0)
+        """
+        return [("id", "inselect", (query, (self.env.uid,)))]
+
+    @api.model
+    def _get_unread_message_count(self, limit=None):
+        """Count the current user's unread messages on their backends."""
+        backends = self.env["whatsapp.backend"].search(
+            [("user_ids", "in", self.env.uid)]
         )
-        message_alias = unread_statuses.join(
-            read_status._table,
-            "message_id",
-            self.env["whatsapp.message"]._table,
-            "id",
-            "message_id",
+        if not backends:
+            return 0
+        self.env["whatsapp.message"].flush_model(["thread_id", "direction"])
+        self.flush_model(["backend_id", "last_incoming_message_id"])
+        self.env["whatsapp.thread.member"].flush_model()
+        self.env.cr.execute(
+            """
+            SELECT count(*) FROM (
+                SELECT 1
+                  FROM whatsapp_thread t
+                  LEFT JOIN whatsapp_thread_member tm
+                         ON tm.thread_id = t.id AND tm.user_id = %(uid)s
+                  JOIN whatsapp_message m
+                    ON m.thread_id = t.id
+                   AND m.direction = 'incoming'
+                   AND m.id > COALESCE(tm.seen_message_cursor, 0)
+                 WHERE t.backend_id IN %(backend_ids)s
+                   AND t.last_incoming_message_id
+                       > COALESCE(tm.seen_message_cursor, 0)
+                 LIMIT %(limit)s
+            ) unread
+            """,
+            {
+                "uid": self.env.uid,
+                "backend_ids": tuple(backends.ids),
+                "limit": limit,
+            },
         )
-        thread_ids = unread_statuses.subselect(f'"{message_alias}"."thread_id"')
-        return [("id", "inselect", thread_ids)]
+        return self.env.cr.fetchone()[0]
 
     def read(self, fields=None, load="_classic_read"):
         """Override to bypass res.partner record rules when reading partner_id.
@@ -263,6 +300,8 @@ class WhatsAppThread(models.Model):
             "last_message_date": message_record.create_date,
             "last_message_preview": message_record.body or False,
         }
+        if message_record.direction == "incoming":
+            updates["last_incoming_message_id"] = message_record.id
         if message_record.partner_id and not self.partner_id:
             updates["partner_id"] = message_record.partner_id.id
         self.sudo().write(updates)
@@ -387,67 +426,19 @@ class WhatsAppThread(models.Model):
         }
 
     def mark_as_read(self):
-        """
-        Mark all incoming messages in this thread as read.
-        Called when user opens a thread in the frontend.
-        """
-        messages = (
-            self.env["whatsapp.message.read.status"]
-            .search(
-                [
-                    ("message_id.thread_id", "=", self.id),
-                    ("is_read", "=", False),
-                    ("user_id", "=", self.env.user.id),
-                ]
-            )
-            .mapped("message_id")
-        )
-        for msg in messages:
-            msg.mark_as_read_by_user(self.env.user)
-
+        """Mark these threads read for the current user (opened in the frontend)."""
+        self.check_access_rule("read")
+        self.env["whatsapp.thread.member"].sudo()._mark_seen(self, self.env.user)
         return True
 
     @api.model
     def mark_all_as_read(self, backend_ids):
-        """
-        Mark ALL unread messages as read for the current user.
-        Works across all threads, not just loaded ones.
-
-        Args:
-            backend_ids: Optional list of backend IDs to filter.
-                        If None, uses all backends the user has access to.
-        """
-        user = self.env.user
-
+        """Mark every thread of these backends read for the current user."""
         if not backend_ids:
             return {"marked_count": 0}
-
-        # # Find all unread message statuses for this user in accessible threads
-        # unread_statuses = self.env["whatsapp.message.read.status"].search([
-        #     ("is_read", "=", False),
-        #     ("user_id", "=", user.id),
-        #     ("message_id.thread_id.backend_id", "in", backend_ids.ids),
-        # ])
-
-        # # Mark them all as read
-        # unread_statuses.write({"is_read": True})
-
-        # return {"marked_count": len(unread_statuses)}
-
-        query = """
-            UPDATE whatsapp_message_read_status rs
-            SET is_read = TRUE
-            FROM whatsapp_message m
-            JOIN whatsapp_thread t ON m.thread_id = t.id
-            WHERE rs.message_id = m.id
-                AND rs.is_read = FALSE
-                AND rs.user_id = %s
-                AND t.backend_id IN %s
-        """
-        self.env.cr.execute(query, (user.id, tuple(backend_ids.ids)))
-        marked_count = self.env.cr.rowcount
-        self.env["whatsapp.message.read.status"].invalidate_cache(["is_read"])
-
+        threads = self.search([("backend_id", "in", backend_ids.ids)])
+        marked_count = self._get_unread_message_count()
+        self.env["whatsapp.thread.member"].sudo()._mark_seen(threads, self.env.user)
         return {"marked_count": marked_count}
 
     @api.model

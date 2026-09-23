@@ -168,16 +168,8 @@ class WhatsAppCloudAPIBackendController(http.Controller):
     )
     def get_unread_count_endpoint(self, for_badge=False, **kwargs):
         """Get accessible unread messages, optionally capped at 100 for the badge."""
-        backend_ids = request.env["whatsapp.backend"].search(
-            [("user_ids", "in", request.env.user.id)]
-        )
-        total_unread = request.env["whatsapp.message.read.status"].search_count(
-            [
-                ("is_read", "=", False),
-                ("user_id", "=", request.env.user.id),
-                ("message_id.thread_id.backend_id", "in", backend_ids.ids),
-            ],
-            limit=100 if for_badge else None,
+        total_unread = request.env["whatsapp.thread"]._get_unread_message_count(
+            limit=100 if for_badge else None
         )
         return {"unread_count": total_unread}
 

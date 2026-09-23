@@ -125,6 +125,26 @@ class WhatsAppBackend(models.Model):
         if self.search_count([("main_backend", "=", True)]) > 1:
             raise ValidationError(_("There can be only one main WhatsApp backend."))
 
+    def write(self, vals):
+        previous_users = (
+            {backend: backend.user_ids for backend in self}
+            if "user_ids" in vals
+            else {}
+        )
+        res = super().write(vals)
+        for backend, users in previous_users.items():
+            new_users = backend.user_ids - users
+            if new_users:
+                # Joining a backend starts with its history read, as it did
+                # when read statuses were created for existing members only.
+                threads = (
+                    self.env["whatsapp.thread"]
+                    .sudo()
+                    .search([("backend_id", "=", backend.id)])
+                )
+                self.env["whatsapp.thread.member"].sudo()._mark_seen(threads, new_users)
+        return res
+
     def _compute_template_count(self):
         Template = self.env["whatsapp.template"]
         for record in self:

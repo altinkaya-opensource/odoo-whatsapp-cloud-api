@@ -105,11 +105,11 @@
         />
     </record>
 
-    <record id="rule_whatsapp_message_read_status_user" model="ir.rule">
-        <field name="name">WhatsApp Message Read Status: own records only</field>
+    <record id="rule_whatsapp_thread_member_user" model="ir.rule">
+        <field name="name">WhatsApp Thread Readers: own read position</field>
         <field
             name="model_id"
-            ref="whatsapp_cloud_api_backend.model_whatsapp_message_read_status"
+            ref="whatsapp_cloud_api_backend.model_whatsapp_thread_member"
         />
         <field name="domain_force">
             [('user_id', '=', user.id)]
