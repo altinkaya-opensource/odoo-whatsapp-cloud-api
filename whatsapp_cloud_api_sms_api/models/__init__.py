@@ -15,3 +15,4 @@
 # from . import sms_composer
 from . import whatsapp_template
 from . import sms_api
+from . import whatsapp_message

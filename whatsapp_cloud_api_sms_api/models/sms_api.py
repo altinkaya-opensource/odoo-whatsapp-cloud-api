@@ -12,7 +12,12 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+import logging
+
 from odoo import api, fields, models
+from odoo.exceptions import UserError
+
+_logger = logging.getLogger(__name__)
 
 
 class SmsApi(models.AbstractModel):
@@ -27,6 +32,19 @@ class SmsApi(models.AbstractModel):
         sending a message first. That's why we attempt to send
         WhatsApp messages first, and if it fails, we send SMS
         messages as a fallback.
+        """
+        if self.env.context.get("sms_skip_whatsapp"):
+            return super()._send_sms_batch(messages)
+        whatsapp_result, sms_list = self._try_whatsapp_first(messages)
+        res = super()._send_sms_batch(sms_list)
+        return whatsapp_result + res
+
+    @api.model
+    def _try_whatsapp_first(self, messages):
+        """Send what WhatsApp can take; return (results, messages left for SMS).
+
+        Each send runs in its own savepoint, so one rejected number only
+        sends that message by SMS instead of failing the whole batch.
         """
         whatsapp_result = []
         sms_list = []
@@ -58,26 +76,38 @@ class SmsApi(models.AbstractModel):
             if not template:
                 sms_list.append(msg)
                 continue
-            result = backend_id.send_template_message(
-                phone_number=sms_record.number,
-                template=template,
-                record=record,
-                partner=partner_id,
-            )
-            if not result.get("error"):
-                # Render the template message with buttons as links
-                rendered_message = (
-                    f"[WhatsApp]\n{template.render_message_preview(record)}"
+            try:
+                with self.env.cr.savepoint():
+                    result = backend_id.send_template_message(
+                        phone_number=sms_record.number,
+                        template=template,
+                        record=record,
+                        partner=partner_id,
+                    )
+            except UserError as error:
+                _logger.warning(
+                    "WhatsApp rejected SMS %s, sending it by SMS: %s",
+                    sms_record.id,
+                    error,
                 )
-                sms_record.mail_message_id.body = rendered_message
-                whatsapp_result.append(
-                    {
-                        "res_id": sms_record.id,
-                        "state": "success",
-                    }
-                )
-            else:
                 sms_list.append(msg)
-
-        res = super()._send_sms_batch(sms_list)
-        return whatsapp_result + res
+                continue
+            # Meta reports undeliverable numbers later, as a "failed"
+            # status: keep what is needed to text the customer then.
+            self.env["whatsapp.message"].sudo().browse(result["message_id"]).write(
+                {
+                    "sms_fallback_number": sms_record.number,
+                    "sms_fallback_body": sms_record.body,
+                    "sms_fallback_mail_message_id": sms_record.mail_message_id.id,
+                }
+            )
+            # Render the template message with buttons as links
+            rendered_message = f"[WhatsApp]\n{template.render_message_preview(record)}"
+            sms_record.mail_message_id.body = rendered_message
+            whatsapp_result.append(
+                {
+                    "res_id": sms_record.id,
+                    "state": "success",
+                }
+            )
+        return whatsapp_result, sms_list
