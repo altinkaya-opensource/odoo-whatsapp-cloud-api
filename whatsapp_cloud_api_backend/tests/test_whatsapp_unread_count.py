@@ -104,3 +104,12 @@ class TestWhatsAppUnreadCount(TransactionCase):
         # The other user's unread messages still count for them only
         other_threads = self.env["whatsapp.thread"].with_user(self.other_user)
         self.assertEqual(other_threads.search(domain), self.thread)
+
+    def test_thread_counts_every_unread_message(self):
+        thread = self.thread.with_user(self.user)
+        self.assertEqual(thread.unread_count, 101)
+        self.statuses[:40].write({"is_read": True})
+        thread.invalidate_recordset(["unread_count"])
+        self.assertEqual(thread.unread_count, 61)
+        # Per user, even inside one transaction
+        self.assertEqual(self.thread.with_user(self.other_user).unread_count, 101)

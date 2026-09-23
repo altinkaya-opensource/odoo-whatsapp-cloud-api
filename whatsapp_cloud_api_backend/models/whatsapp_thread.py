@@ -121,24 +121,30 @@ class WhatsAppThread(models.Model):
                 partner_by_thread.get(record.id) in partner_ids_with_avatar
             )
 
+    @api.depends_context("uid")
     def _compute_unread_count(self):
         """Compute the current user's unread count for each thread.
 
         One search for the whole recordset instead of one per thread: the
-        chat list reads this field for every row it shows.
+        chat list reads this field for every row it shows. Count per
+        message: mapping to thread_id would collapse each thread to one.
         """
         counts = {thread_id: 0 for thread_id in self.ids}
 
         if self.ids:
-            statuses = self.env["whatsapp.message.read.status"].search(
-                [
-                    ("message_id.thread_id", "in", self.ids),
-                    ("is_read", "=", False),
-                    ("user_id", "=", self.env.user.id),
-                ]
+            unread_messages = (
+                self.env["whatsapp.message.read.status"]
+                .search(
+                    [
+                        ("message_id.thread_id", "in", self.ids),
+                        ("is_read", "=", False),
+                        ("user_id", "=", self.env.user.id),
+                    ]
+                )
+                .message_id
             )
-            for thread_id in statuses.mapped("message_id").mapped("thread_id.id"):
-                counts[thread_id] = counts.get(thread_id, 0) + 1
+            for message in unread_messages:
+                counts[message.thread_id.id] += 1
 
         for thread in self:
             thread.unread_count = counts.get(thread.id, 0)
