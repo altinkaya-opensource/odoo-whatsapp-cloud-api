@@ -5,8 +5,6 @@ from unittest.mock import patch
 
 from odoo.tests import HttpCase, tagged
 
-from ..controllers.webhook import WhatsAppCloudAPIWebhookController
-
 
 @tagged("post_install", "-at_install")
 class TestWhatsAppWebhookHTTP(HttpCase):
@@ -49,7 +47,7 @@ class TestWhatsAppWebhookHTTP(HttpCase):
         }
         response = self.url_open("/whatsapp/webhook", data=raw, headers=headers)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"status": "processed"})
+        self.assertEqual(response.json(), {"status": "queued"})
 
         with self.assertLogs(
             "odoo.addons.whatsapp_cloud_api_backend.controllers.webhook", "WARNING"
@@ -63,8 +61,8 @@ class TestWhatsAppWebhookHTTP(HttpCase):
 
         with (
             patch.object(
-                WhatsAppCloudAPIWebhookController,
-                "_handle_webhook_payload",
+                type(self.env["whatsapp.webhook"]),
+                "_enqueue_payload",
                 side_effect=RuntimeError("Simulated ingestion failure"),
             ),
             self.assertLogs("odoo.http", "ERROR"),

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<odoo noupdate="1">
+    <!-- Incoming WhatsApp messages and delivery statuses -->
+    <record id="queue_job_channel_whatsapp" model="queue.job.channel">
+        <field name="name">whatsapp</field>
+        <field name="parent_id" ref="queue_job.channel_root" />
+    </record>
+</odoo>

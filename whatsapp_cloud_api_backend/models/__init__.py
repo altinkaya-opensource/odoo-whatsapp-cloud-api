@@ -8,3 +8,4 @@ from . import res_partner
 from . import whatsapp_chatbot
 from . import whatsapp_chatbot_script
 from . import whatsapp_message_report
+from . import whatsapp_webhook

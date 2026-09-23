@@ -22,6 +22,7 @@
         "views/res_partner_views.xml",
         "views/whatsapp_message_report_views.xml",
         "data/ir_cron_data.xml",
+        "data/queue_job_channel_data.xml",
     ],
     "assets": {
         "web.assets_backend": [

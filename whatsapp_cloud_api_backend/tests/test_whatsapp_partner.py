@@ -1,19 +1,13 @@
-from types import SimpleNamespace
-from unittest.mock import patch
-
 from odoo.tests.common import TransactionCase
 
 from odoo.addons.queue_job.tests.common import trap_jobs
 
-from ..controllers import webhook
-
 
 class TestWhatsAppPartner(TransactionCase):
     def _find_or_create(self, phone_number):
-        with patch.object(webhook, "request", SimpleNamespace(env=self.env)):
-            return webhook.WhatsAppCloudAPIWebhookController()._find_or_create_partner(
-                phone_number, {"profile": {"name": "WhatsApp sender"}}
-            )
+        return self.env["whatsapp.webhook"]._find_or_create_partner(
+            phone_number, {"profile": {"name": "WhatsApp sender"}}
+        )
 
     def test_matches_locally_typed_numbers(self):
         partner = self.env["res.partner"].create(
