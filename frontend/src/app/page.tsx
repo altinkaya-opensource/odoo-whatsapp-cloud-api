@@ -39,6 +39,18 @@ import { useTabSync } from "./hooks/use-tab-sync";
 import SessionBlockedOverlay from "./components/session-blocked-overlay";
 import { onOpenThreadRequest } from "./lib/notifications";
 
+const CONTEXT_COLLAPSED_STORAGE_KEY = "app.contextCollapsed";
+
+const readContextCollapsed = () => {
+  try {
+    return (
+      window.localStorage.getItem(CONTEXT_COLLAPSED_STORAGE_KEY) === "true"
+    );
+  } catch {
+    return false;
+  }
+};
+
 // Context to pass initial thread_id to child components
 const InitialThreadContext = createContext<string | null>(null);
 
@@ -168,6 +180,24 @@ function ResponsiveLayout() {
   const { isMobile, isInitialized } = useResponsive();
   const { currentView } = useMobileNavigation();
   const { t } = useTranslations();
+  // The grid only renders after hydration, so reading storage here cannot
+  // cause a server/client markup mismatch.
+  const [isContextCollapsed, setIsContextCollapsed] = useState(
+    () => typeof window !== "undefined" && readContextCollapsed()
+  );
+
+  const handleToggleContext = () => {
+    const nextCollapsed = !isContextCollapsed;
+    setIsContextCollapsed(nextCollapsed);
+    try {
+      window.localStorage.setItem(
+        CONTEXT_COLLAPSED_STORAGE_KEY,
+        String(nextCollapsed)
+      );
+    } catch {
+      // Blocked storage: the choice lasts until the page reloads
+    }
+  };
 
   // Use a shaped loading state instead of a blank page while responsive
   // layout information becomes available after hydration.
@@ -207,12 +237,21 @@ function ResponsiveLayout() {
   }
 
   // Tablet/Desktop layout: multi-panel grid
+  const contextColumn = isContextCollapsed
+    ? "xl:grid-cols-[72px_minmax(320px,380px)_minmax(0,1fr)_56px]"
+    : "xl:grid-cols-[72px_minmax(320px,380px)_minmax(0,1fr)_minmax(264px,312px)]";
+
   return (
-    <section className="app-shell grid h-[100dvh] min-h-0 w-full grid-cols-[64px_minmax(280px,360px)_minmax(0,1fr)] xl:grid-cols-[72px_minmax(320px,380px)_minmax(0,1fr)_minmax(264px,312px)]">
+    <section
+      className={`app-shell grid h-[100dvh] min-h-0 w-full grid-cols-[64px_minmax(280px,360px)_minmax(0,1fr)] ${contextColumn}`}
+    >
       <TabIcons />
       <TabPanel />
       <TabActivePanel />
-      <ConversationContext />
+      <ConversationContext
+        isCollapsed={isContextCollapsed}
+        onToggleCollapsed={handleToggleContext}
+      />
       <ConnectionOverlay />
     </section>
   );

@@ -71,7 +71,8 @@
   },
   "context": {
     "title": "Müşteri bilgileri",
-    "channel": "WhatsApp",
+    "collapse": "Müşteri bilgilerini gizle",
+    "expand": "Müşteri bilgilerini göster",
     "emptyTitle": "Müşteri bilgileri",
     "emptyDescription": "Bağlı Odoo müşterisini görmek için bir sohbet seçin.",
     "unknownContact": "Bilinmeyen müşteri",
