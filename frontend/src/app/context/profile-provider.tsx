@@ -25,7 +25,7 @@ export default function ProfileProvider({ children }: PropsWithChildren) {
     profile: {
       id: "",
       name: "",
-      blueTickEnabled: false,
+      blueTickEnabled: true,
       avatarUrl: "",
     },
     isLoading: false,
@@ -38,7 +38,7 @@ export default function ProfileProvider({ children }: PropsWithChildren) {
       profile: {
         id: String(backendUser?.id ?? user?.uid ?? ""),
         name: backendUser?.name ?? (user as { name?: string })?.name ?? "User",
-        blueTickEnabled: false,
+        blueTickEnabled: true,
         avatarUrl: backendUser?.imageUrl ?? "",
       },
       isLoading: false,

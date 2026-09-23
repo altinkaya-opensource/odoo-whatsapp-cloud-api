@@ -36,7 +36,7 @@ export default function ChatMessage({
   isTranslated = false,
 }: ChatMessageProps) {
   const { getContact } = useContacts();
-  const { group } = useCurrentChat();
+  const { group, partnerName, threadName, phoneNumber } = useCurrentChat();
   const { backendUsersById, backendUserId } = useAuth();
   const { t, locale } = useTranslations();
 
@@ -65,9 +65,13 @@ export default function ChatMessage({
     if (!message.replyTo) {
       return null;
     }
+    // Contacts are the backend's agents; the other side is the customer
     const name = message.replyTo.senderIsUser
       ? t("common.you")
-      : (getContact(message.replyTo.contactId)?.displayName ?? t("common.you"));
+      : (partnerName ??
+        threadName ??
+        phoneNumber ??
+        t("context.unknownContact"));
     return (
       <div className="mb-1 w-full max-w-xs rounded-xl border-l-[3px] border-[rgb(var(--accent-primary))] bg-[rgb(var(--bg-reply-preview)/var(--bg-reply-preview-opacity))] px-2.5 py-2 text-xs text-[rgb(var(--text-secondary))]">
         <p className="font-semibold truncate">{name}</p>

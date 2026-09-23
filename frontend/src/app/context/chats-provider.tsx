@@ -214,7 +214,7 @@ export default function ChatsProvider({
         last_message_date: string | null;
         last_message_preview: string | null;
         phone_number: string | null;
-        backend_id: number | null;
+        backend_id: [number, string] | number | null;
         partner_id?: [number, string] | number | null | false;
         write_date: string;
         unread_count?: number;
@@ -314,7 +314,10 @@ export default function ChatsProvider({
               contactId: thread.phone_number || "",
               threadName: thread.name || undefined,
               phoneNumber: thread.phone_number || null,
-              backendId: thread.backend_id || null,
+              // Webhook and bus payloads send many2one values as [id, name]
+              backendId: Array.isArray(thread.backend_id)
+                ? thread.backend_id[0]
+                : thread.backend_id || null,
               partnerId,
               partnerName,
               partnerAvatar,

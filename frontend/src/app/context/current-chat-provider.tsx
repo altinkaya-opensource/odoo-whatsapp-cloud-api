@@ -277,6 +277,9 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
               delivered:
                 newMessage.delivered ||
                 existingMessagesMap.get(newMessage.id)!.delivered,
+              // Statuses can arrive out of order: never go back from "read"
+              read:
+                newMessage.read || existingMessagesMap.get(newMessage.id)!.read,
             } as Message);
           } else if (newMessage.id && !existingMessagesMap.has(newMessage.id)) {
             // Add new message - keep the replyMessageId from rawMessages for later resolution
@@ -860,6 +863,9 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
     setCurrentChat((prev) => ({
       ...prev,
       ...chat,
+      // A search jump sets a target; any other open must clear it, or the
+      // chat opens where the old target was instead of at the bottom.
+      targetMessageId: chat.targetMessageId ?? null,
       isSending: false,
       isPaginationLoading: false,
       hasMoreMessages: true,

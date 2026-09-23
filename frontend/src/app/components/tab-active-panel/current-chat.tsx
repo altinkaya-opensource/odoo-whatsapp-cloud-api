@@ -44,6 +44,8 @@ export default function CurrentChat() {
     targetMessageId,
     phoneNumber,
     backendId,
+    partnerName,
+    threadName,
   } = useCurrentChat();
   const [messageText, setMessageText] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
@@ -839,8 +841,10 @@ export default function CurrentChat() {
                     {t("chatInput.replyingTo", {
                       name: replyTo.isSentFromUser
                         ? t("common.you")
-                        : (contacts.find((c) => c.id === replyTo.contactId)
-                            ?.displayName ?? ""),
+                        : (partnerName ??
+                          threadName ??
+                          phoneNumber ??
+                          t("context.unknownContact")),
                     })}
                   </p>
                   <p className="max-w-xs truncate text-xs text-[rgb(var(--text-secondary))]">
