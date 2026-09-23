@@ -340,8 +340,10 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
           return message;
         });
 
-        // Store the preview update to be executed in useEffect
-        if (hasNewMessages && updatedMessages.length > 0) {
+        // Store the preview update to be executed in useEffect. Not while the
+        // chat is still loading: the poll that runs on open can land first,
+        // and its "new" messages would re-date the thread and move it.
+        if (hasNewMessages && !prev.isLoading && updatedMessages.length > 0) {
           const latestMessage = updatedMessages[updatedMessages.length - 1];
           pendingPreviewUpdateRef.current = {
             threadId,

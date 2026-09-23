@@ -131,6 +131,13 @@ const THREADS_PAGE_SIZE = 30;
 const MESSAGE_SEARCH_PAGE_SIZE = 20;
 const CONTACT_SEARCH_PAGE_SIZE = 5;
 
+// Newest first, then the higher id. The list only gets last_message_date to
+// the second, and bulk sends (cargo notifications) put several threads in
+// the same second; without the id they swapped places on every re-sort.
+const compareByRecency = (a: Chat, b: Chat) =>
+  (b.lastMessageAt || 0) - (a.lastMessageAt || 0) ||
+  Number(b.id) - Number(a.id);
+
 type ChatsProviderProps = PropsWithChildren<{
   includeThreadId?: string | null;
 }>;
@@ -328,9 +335,7 @@ export default function ChatsProvider({
         // Sort by last message timestamp (only when not searching)
         const updatedComplete = Array.from(existingChatsMap.values());
         if (!debouncedSearchQueryRef.current.trim()) {
-          updatedComplete.sort(
-            (a, b) => (b.lastMessageAt || 0) - (a.lastMessageAt || 0)
-          );
+          updatedComplete.sort(compareByRecency);
         }
 
         return {
@@ -413,9 +418,7 @@ export default function ChatsProvider({
         // Rebuild array and sort by lastMessageAt (only when not searching)
         const updatedChats = Array.from(existingChatsMap.values());
         if (!debouncedSearchQueryRef.current.trim()) {
-          updatedChats.sort(
-            (a, b) => (b.lastMessageAt || 0) - (a.lastMessageAt || 0)
-          );
+          updatedChats.sort(compareByRecency);
         }
 
         return {
@@ -606,9 +609,7 @@ export default function ChatsProvider({
         // Sort by lastMessageAt to put the updated thread at the top (only when not searching)
         const sortedComplete = debouncedSearchQueryRef.current.trim()
           ? updatedComplete
-          : updatedComplete.sort(
-              (a, b) => (b.lastMessageAt || 0) - (a.lastMessageAt || 0)
-            );
+          : updatedComplete.sort(compareByRecency);
 
         // Apply current filters to the updated complete list
         const filteredChats = applyFilter(sortedComplete);
@@ -811,10 +812,13 @@ export default function ChatsProvider({
 
         setChats((prev) => {
           if (!append) {
-            const filteredChats = applyFilter(mappedChats);
+            // Odoo orders to the microsecond, which the list never sees:
+            // sort the first page the way every later re-sort will.
+            const sortedChats = mappedChats.sort(compareByRecency);
+            const filteredChats = applyFilter(sortedChats);
             return {
               ...prev,
-              complete: mappedChats,
+              complete: sortedChats,
               filtered: filteredChats,
               isLoading: false,
             };
@@ -827,9 +831,7 @@ export default function ChatsProvider({
             }
           });
 
-          const mergedList = Array.from(merged.values()).sort(
-            (a, b) => (b.lastMessageAt || 0) - (a.lastMessageAt || 0)
-          );
+          const mergedList = Array.from(merged.values()).sort(compareByRecency);
 
           return {
             ...prev,
