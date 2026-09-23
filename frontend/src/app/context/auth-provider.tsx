@@ -128,7 +128,7 @@ export default function AuthProvider({ children }: PropsWithChildren) {
       // Revalidate session in background to refresh server-side cache
       // Repopulates the server-side session cache after a restart or deploy
       loginWithSessionId(storedSession).catch(() => {
-        // Session validation failed - user will be logged out
+        // Logged out if Odoo rejected the session, kept otherwise
         console.log("[Auth] Session revalidation failed on mount");
       });
     } else {
@@ -336,7 +336,7 @@ export default function AuthProvider({ children }: PropsWithChildren) {
           body: JSON.stringify({ sessionId: providedSessionId }),
         });
 
-        const data = (await response.json()) as Omit<
+        const data = (await response.json().catch(() => ({}))) as Omit<
           AuthenticatedResponse,
           "sessionId"
         > & { error?: unknown };
@@ -346,6 +346,11 @@ export default function AuthProvider({ children }: PropsWithChildren) {
             typeof data?.error === "string"
               ? data.error
               : "Invalid or expired session ID";
+          // Only Odoo rejecting the session ends it. A deploy or a network
+          // drop (5xx, fetch failure) keeps the user signed in to retry.
+          if (response.status === 401 || response.status === 403) {
+            clearAuthentication();
+          }
           throw new Error(message);
         }
 
@@ -353,9 +358,6 @@ export default function AuthProvider({ children }: PropsWithChildren) {
           ...data,
           sessionId: providedSessionId,
         });
-      } catch (error) {
-        clearAuthentication();
-        throw error;
       } finally {
         setIsAuthenticating(false);
       }

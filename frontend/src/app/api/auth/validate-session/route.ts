@@ -125,8 +125,12 @@ export async function POST(request: Request) {
       data?: { name?: string; message?: string };
     };
 
-    const status =
-      err.data?.name === "odoo.exceptions.AccessDenied" ? 401 : 500;
+    // Odoo answers an expired session with JSON-RPC error 100
+    const sessionRejected =
+      err.code === 100 ||
+      err.data?.name === "odoo.exceptions.AccessDenied" ||
+      err.data?.name === "odoo.http.SessionExpiredException";
+    const status = sessionRejected ? 401 : 500;
     const message =
       err.message || err.data?.message || "Unable to validate session ID";
 
