@@ -293,7 +293,10 @@ class WhatsAppThread(models.Model):
             return media_id
         if attachment:
             if isinstance(attachment, int):
-                attachment = self.env["ir.attachment"].browse(attachment).sudo()
+                # The id comes from the browser: send only what the user can read
+                attachment = self.env["ir.attachment"].sudo(False).browse(attachment)
+                attachment.check("read")
+                attachment = attachment.sudo()
             return self.backend_id._upload_media_to_whatsapp(attachment)
         return None
 
@@ -301,6 +304,7 @@ class WhatsAppThread(models.Model):
         self, *, payload, message_type, body=None, attachment=None, extra_vals=None
     ):
         self.ensure_one()
+        self.check_access_rule("read")
         backend = self.backend_id
         if not backend:
             raise UserError(_("A WhatsApp backend is required to send messages."))

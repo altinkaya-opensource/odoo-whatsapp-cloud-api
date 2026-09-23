@@ -30,6 +30,9 @@ class SmsApi(models.AbstractModel):
         """
         whatsapp_result = []
         sms_list = []
+        # Company notifications: send from the company number whoever
+        # triggered the SMS, backend membership only limits agents.
+        backend_model = self.env["whatsapp.backend"].sudo()
         for msg in messages:
             sms_record = self.env["sms.sms"].browse(msg["res_id"])
             # There should be only one partner
@@ -39,10 +42,8 @@ class SmsApi(models.AbstractModel):
             )
             # Get the last used backend (whatsapp threads are already ordered)
             backend_id = fields.first(
-                partner_id.whatsapp_thread_ids
-            ).backend_id or self.env["whatsapp.backend"].search(
-                [("main_backend", "=", True)], limit=1
-            )
+                partner_id.sudo().whatsapp_thread_ids
+            ).backend_id or backend_model.search([("main_backend", "=", True)], limit=1)
             if not backend_id:
                 sms_list.append(msg)
                 continue

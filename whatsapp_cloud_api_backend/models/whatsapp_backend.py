@@ -421,6 +421,9 @@ class WhatsAppBackend(models.Model):
 
     def _get_or_create_thread(self, phone_number, partner=None, contact_name=None):
         self.ensure_one()
+        # Every send goes through here and continues with sudo: only members
+        # of this backend (or sudo callers such as the SMS fallback) may send.
+        self.check_access_rule("read")
         if not phone_number:
             raise UserError(
                 _("A phone number is required to identify the WhatsApp thread.")

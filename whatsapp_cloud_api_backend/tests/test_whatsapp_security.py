@@ -1,5 +1,10 @@
+import base64
+from unittest.mock import patch
+
 from odoo.exceptions import AccessError
 from odoo.tests.common import TransactionCase, new_test_user
+
+from odoo.addons.queue_job.tests.common import trap_jobs
 
 CREDENTIAL_FIELDS = (
     "api_token",
@@ -17,13 +22,13 @@ class TestWhatsAppSecurity(TransactionCase):
             cls.env,
             login="whatsapp_security_agent",
             password="Security-Test-1234",
-            groups="whatsapp_cloud_api_backend.group_whatsapp_backend_user",
+            groups="base.group_user,whatsapp_cloud_api_backend.group_whatsapp_backend_user",
         )
         cls.manager = new_test_user(
             cls.env,
             login="whatsapp_security_manager",
             password="Security-Test-1234",
-            groups="whatsapp_cloud_api_backend.group_whatsapp_backend_manager",
+            groups="base.group_user,whatsapp_cloud_api_backend.group_whatsapp_backend_manager",
         )
         cls.backend = cls.env["whatsapp.backend"].create(
             {
@@ -34,6 +39,25 @@ class TestWhatsAppSecurity(TransactionCase):
                 "frontend_webhook_secret": "security-test-frontend-secret",
                 "user_ids": [(6, 0, cls.agent.ids)],
             }
+        )
+        cls.other_backend = cls.env["whatsapp.backend"].create(
+            {
+                "name": "Security test (other team)",
+                "api_token": "security-test-other-token",
+                "phone_number_id": "security-test-other",
+            }
+        )
+
+    def _patch_meta(self):
+        """Replace the Meta API calls so a send never leaves the test."""
+        Backend = type(self.env["whatsapp.backend"])
+        return (
+            patch.object(
+                Backend,
+                "_call_whatsapp_api",
+                return_value={"messages": [{"id": "wamid.security-test"}]},
+            ),
+            patch.object(Backend, "_upload_media_to_whatsapp", return_value="media-id"),
         )
 
     def test_agents_cannot_read_credentials(self):
@@ -47,3 +71,49 @@ class TestWhatsAppSecurity(TransactionCase):
     def test_managers_can_read_credentials(self):
         values = self.backend.with_user(self.manager).read(list(CREDENTIAL_FIELDS))
         self.assertEqual(values[0]["api_token"], "security-test-token")
+
+    def test_agents_only_see_their_backends(self):
+        backends = self.env["whatsapp.backend"].with_user(self.agent).search([])
+        self.assertIn(self.backend, backends)
+        self.assertNotIn(self.other_backend, backends)
+        managed = self.env["whatsapp.backend"].with_user(self.manager).search([])
+        self.assertIn(self.other_backend, managed)
+
+    def test_agents_cannot_send_from_other_backends(self):
+        call_api, upload = self._patch_meta()
+        with call_api as api_call, upload, trap_jobs():
+            with self.assertRaises(AccessError):
+                self.other_backend.with_user(self.agent).send_text_message(
+                    "905550000001", "hello"
+                )
+            api_call.assert_not_called()
+            self.backend.with_user(self.agent).send_text_message(
+                "905550000001", "hello"
+            )
+            api_call.assert_called_once()
+
+    def test_agents_send_only_attachments_they_can_read(self):
+        # In this fork every internal user may read unlinked attachments;
+        # private documents are protected by the record they belong to.
+        restricted_record = self.env["ir.config_parameter"].search([], limit=1)
+        foreign = self.env["ir.attachment"].create(
+            {
+                "name": "payslip.pdf",
+                "datas": base64.b64encode(b"private"),
+                "res_model": restricted_record._name,
+                "res_id": restricted_record.id,
+            }
+        )
+        own = (
+            self.env["ir.attachment"]
+            .with_user(self.agent)
+            .create({"name": "photo.png", "datas": base64.b64encode(b"photo")})
+        )
+        backend = self.backend.with_user(self.agent)
+        call_api, upload = self._patch_meta()
+        with call_api, upload as upload_call, trap_jobs():
+            with self.assertRaises(AccessError):
+                backend.send_image_message("905550000001", attachment=foreign.id)
+            upload_call.assert_not_called()
+            backend.send_image_message("905550000001", attachment=own.id)
+            upload_call.assert_called_once()
