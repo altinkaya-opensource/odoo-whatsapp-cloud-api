@@ -20,6 +20,8 @@ class ResPartner(models.Model):
         inverse_name="partner_id",
         string="WhatsApp Threads",
     )
+    # Incoming WhatsApp messages look their sender up by this exact value
+    phone_sanitized = fields.Char(index="btree_not_null")
 
     def _compute_has_whatsapp_conversation(self):
         """Compute whether the partner has any WhatsApp conversation threads."""

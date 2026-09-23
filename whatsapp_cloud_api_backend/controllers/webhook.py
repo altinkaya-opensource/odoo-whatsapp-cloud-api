@@ -406,7 +406,12 @@ class WhatsAppCloudAPIWebhookController(http.Controller):
         if not phone_number:
             return False
         partner_env = request.env["res.partner"].sudo()
+        # phone_sanitized holds the E.164 form of the partner's mobile or phone,
+        # so it also matches numbers typed locally ("0555 ..."). The fuzzy
+        # search only covers numbers that could not be sanitized.
         partner = partner_env.search(
+            [("phone_sanitized", "=", f"+{phone_number}")], limit=1
+        ) or partner_env.search(
             [("phone_mobile_search", "ilike", phone_number)], limit=1
         )
         if not partner:

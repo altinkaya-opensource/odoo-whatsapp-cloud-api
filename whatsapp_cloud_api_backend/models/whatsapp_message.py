@@ -40,7 +40,8 @@ class WhatsAppMessage(models.Model):
     partner_id = fields.Many2one(
         comodel_name="res.partner",
         string="Partner",
-        ondelete="cascade",
+        # Deleting a duplicate partner must not delete the conversation
+        ondelete="set null",
         index=True,
         help="Optional partner related to the counterparty of the message.",
     )
