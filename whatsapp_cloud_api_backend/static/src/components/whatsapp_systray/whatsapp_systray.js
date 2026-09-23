@@ -12,25 +12,52 @@ export class WhatsAppSystray extends Component {
         this.notification = useService("notification");
         this.state = useState({ unreadCount: 0, hasAccess: false });
 
+        this.busService = useService("bus_service");
+        this.onBusNotification = this.onBusNotification.bind(this);
+
         onWillStart(async () => {
             this.state.hasAccess = await this.user.hasGroup(
                 "whatsapp_cloud_api_backend.group_whatsapp_backend_user"
             );
             if (this.state.hasAccess) {
                 await this.fetchUnreadCount();
+                // Customer messages arrive on the bus; the server adds the
+                // channels of the user's backends to this one.
+                this.busService.addChannel("whatsapp");
+                this.busService.addEventListener("notification", this.onBusNotification);
             }
         });
 
-        // Poll for unread count every 30 seconds
+        // Reads happen in the WhatsApp frontend and are not pushed: poll for them
         this.pollInterval = browser.setInterval(() => {
             if (this.state.hasAccess) {
                 this.fetchUnreadCount();
             }
-        }, 30000);
+        }, 120000);
 
         onWillUnmount(() => {
             browser.clearInterval(this.pollInterval);
+            browser.clearTimeout(this.refreshTimeout);
+            this.busService.removeEventListener("notification", this.onBusNotification);
         });
+    }
+
+    /**
+     * Refresh the badge shortly after a customer message arrives.
+     *
+     * @param {CustomEvent} event bus notifications
+     */
+    onBusNotification({ detail: notifications }) {
+        const hasIncoming = notifications.some(
+            ({ type, payload }) =>
+                type === "whatsapp/message" &&
+                payload.event === "created" &&
+                payload.message.direction === "incoming"
+        );
+        if (hasIncoming) {
+            browser.clearTimeout(this.refreshTimeout);
+            this.refreshTimeout = browser.setTimeout(() => this.fetchUnreadCount(), 1000);
+        }
     }
 
     async fetchUnreadCount() {

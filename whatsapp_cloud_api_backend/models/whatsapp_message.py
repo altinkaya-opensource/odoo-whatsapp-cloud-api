@@ -4,6 +4,10 @@ from odoo import SUPERUSER_ID, api, fields, models, tools
 
 from ..controllers.main import WP_ATTACHMENT_DOWNLOAD_PATH
 from .frontend_webhook import WebhookSender
+from .whatsapp_bus import queue_frontend_notification
+
+# Changes the chat view shows: sent to the frontend as "updated"
+FRONTEND_MESSAGE_FIELDS = {"body", "status", "attachment_id", "reaction_emoji"}
 
 
 class WhatsAppMessage(models.Model):
@@ -155,6 +159,7 @@ class WhatsAppMessage(models.Model):
 
         # Send webhook payload for message creation
         res.with_delay().send_webhook_payload("message.created")
+        queue_frontend_notification(res, "created")
 
         return res
 
@@ -164,7 +169,52 @@ class WhatsAppMessage(models.Model):
         # so the frontend only learns about it through an update event.
         if "reaction_emoji" in vals:
             self.with_delay().send_webhook_payload("message.updated")
+        if FRONTEND_MESSAGE_FIELDS.intersection(vals):
+            queue_frontend_notification(self, "updated")
         return res
+
+    def _frontend_payload(self):
+        """Return the message as the frontend reads it."""
+        self.ensure_one()
+        attachment = self.attachment_id
+        attachment_data = False
+        attachment_full_data = None
+        if attachment:
+            base_url = self.env["ir.config_parameter"].sudo().get_param("web.base.url")
+            attachment_data = [attachment.id, attachment.name]
+            attachment_full_data = {
+                "id": attachment.id,
+                "name": attachment.name,
+                "mimetype": attachment.mimetype,
+                "url": f"{base_url}{WP_ATTACHMENT_DOWNLOAD_PATH}{attachment.id}",
+                "file_size": attachment.file_size,
+            }
+        return {
+            "id": self.id,
+            # Required: the frontend fans this event out only to the
+            # sessions that have access to this backend.
+            "backend_id": (
+                [self.backend_id.id, self.backend_id.name] if self.backend_id else False
+            ),
+            "body": self.body,
+            "status": self.status,
+            "direction": self.direction,
+            "attachment_id": attachment_data,
+            "attachment": attachment_full_data,
+            "message_id": self.message_id,
+            "replied_message_id": (
+                [self.replied_message_id.id, self.replied_message_id.message_id]
+                if self.replied_message_id
+                else False
+            ),
+            "create_date": fields.Datetime.to_string(self.create_date) or None,
+            "create_uid": (
+                [self.create_uid.id, self.create_uid.name] if self.create_uid else False
+            ),
+            "write_date": fields.Datetime.to_string(self.write_date) or None,
+            "timestamp": self.timestamp,
+            "reaction_emoji": self.reaction_emoji,
+        }
 
     @api.depends("create_uid")
     def _compute_is_automated(self):

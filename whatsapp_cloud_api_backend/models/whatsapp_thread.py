@@ -8,6 +8,17 @@ from odoo import _, api, fields, models
 from odoo.exceptions import UserError
 
 from .frontend_webhook import WebhookSender
+from .whatsapp_bus import queue_frontend_notification
+
+# Fields of the chat list: chatbot bookkeeping writes do not notify
+FRONTEND_THREAD_FIELDS = {
+    "name",
+    "phone_number",
+    "partner_id",
+    "last_message_id",
+    "last_message_date",
+    "last_message_preview",
+}
 
 _logger = logging.getLogger(__name__)
 
@@ -268,6 +279,7 @@ class WhatsAppThread(models.Model):
         # frontend webhook
 
         thread.with_delay().send_webhook_payload("thread.created")
+        queue_frontend_notification(thread, "created")
 
         return thread
 
@@ -286,8 +298,35 @@ class WhatsAppThread(models.Model):
         # Push the updated thread to
         # frontend webhook
         self.with_delay().send_webhook_payload("thread.updated")
+        if FRONTEND_THREAD_FIELDS.intersection(vals):
+            queue_frontend_notification(self, "updated")
 
         return res
+
+    def _frontend_payload(self):
+        """Return the thread as the frontend's chat list reads it.
+
+        unread_count is deliberately absent: it is per user, while the
+        notification goes to every member of the backend. Each client keeps
+        its own count and re-syncs it from /whatsapp/unread_count.
+        """
+        self.ensure_one()
+        return {
+            "id": self.id,
+            "name": self.name,
+            "last_message_date": fields.Datetime.to_string(self.last_message_date)
+            or None,
+            "last_message_preview": self.last_message_preview,
+            "phone_number": self.phone_number,
+            "backend_id": (
+                [self.backend_id.id, self.backend_id.name] if self.backend_id else False
+            ),
+            "write_date": fields.Datetime.to_string(self.write_date) or None,
+            "partner_id": (
+                [self.partner_id.id, self.partner_id.name] if self.partner_id else False
+            ),
+            "has_avatar": bool(self.partner_id and self.partner_id.avatar_256),
+        }
 
     def _register_message(self, message_record):
         """Attach the WhatsApp message to the thread and update metadata."""
