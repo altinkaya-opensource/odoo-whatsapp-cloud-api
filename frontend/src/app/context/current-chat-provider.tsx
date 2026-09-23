@@ -261,11 +261,13 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
         const updatedMessagesMap = new Map(existingMessagesMap);
 
         let hasNewMessages = false;
+        let hasUpdatedMessages = false;
         let hasNewIncomingMessages = false;
 
         mappedMessages.forEach((newMessage, index) => {
           if (newMessage.id && existingMessagesMap.has(newMessage.id)) {
-            // Update existing message (e.g., status changes)
+            // Update existing message (e.g., status changes, reactions)
+            hasUpdatedMessages = true;
             updatedMessagesMap.set(newMessage.id, {
               ...existingMessagesMap.get(newMessage.id)!,
               ...newMessage,
@@ -292,7 +294,7 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
           }
         });
 
-        if (!hasNewMessages) {
+        if (!hasNewMessages && !hasUpdatedMessages) {
           return prev;
         }
 
@@ -339,7 +341,7 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
         });
 
         // Store the preview update to be executed in useEffect
-        if (updatedMessages.length > 0) {
+        if (hasNewMessages && updatedMessages.length > 0) {
           const latestMessage = updatedMessages[updatedMessages.length - 1];
           pendingPreviewUpdateRef.current = {
             threadId,
