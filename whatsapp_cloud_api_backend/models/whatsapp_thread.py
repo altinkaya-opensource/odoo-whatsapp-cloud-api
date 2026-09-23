@@ -306,6 +306,18 @@ class WhatsAppThread(models.Model):
             return self.backend_id._upload_media_to_whatsapp(attachment)
         return None
 
+    def _find_thread_message(self, whatsapp_message_id):
+        """Return this thread's message with the given WhatsApp message id."""
+        self.ensure_one()
+        return (
+            self.env["whatsapp.message"]
+            .sudo()
+            .search(
+                [("thread_id", "=", self.id), ("message_id", "=", whatsapp_message_id)],
+                limit=1,
+            )
+        )
+
     def _send_message(
         self, *, payload, message_type, body=None, attachment=None, extra_vals=None
     ):
@@ -355,10 +367,8 @@ class WhatsAppThread(models.Model):
             vals.update(extra_vals)
 
         if message_type == "reaction":
-            message_record = (
-                self.env["whatsapp.message"]
-                .sudo()
-                .search([("message_id", "=", base_payload["reaction"]["message_id"])])
+            message_record = self._find_thread_message(
+                base_payload["reaction"]["message_id"]
             )
             if message_record:
                 message_record.write({"reaction_emoji": body})
@@ -543,7 +553,13 @@ class WhatsAppThread(models.Model):
         }
         if preview_url:
             payload["text"]["preview_url"] = True
-        return self._send_message(payload=payload, message_type="text", body=body)
+        replied_message = self._find_thread_message(reply_to_message_id)
+        return self._send_message(
+            payload=payload,
+            message_type="text",
+            body=body,
+            extra_vals={"replied_message_id": replied_message.id},
+        )
 
     def send_reaction_message(self, emoji, target_message_id):
         self.ensure_one()

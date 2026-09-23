@@ -522,20 +522,9 @@ class WhatsAppBackend(models.Model):
         thread = self._get_or_create_thread(
             phone_number, partner=partner, contact_name=contact_name
         )
-        data = thread.send_reply_message(
+        return thread.send_reply_message(
             body, reply_to_message_id, preview_url=preview_url
         )
-
-        # Link the replied message
-        message_record = self.env["whatsapp.message"].search(
-            [("id", "=", data["message_id"])]
-        )
-        reply_record = self.env["whatsapp.message"].search(
-            [("message_id", "=", reply_to_message_id)]
-        )
-        message_record.sudo().write({"replied_message_id": reply_record.id})
-
-        return data
 
     def send_reaction_message(
         self,

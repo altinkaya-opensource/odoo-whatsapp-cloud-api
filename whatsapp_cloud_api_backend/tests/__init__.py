@@ -2,6 +2,7 @@ from . import test_whatsapp_backend
 from . import test_whatsapp_chatbot
 from . import test_whatsapp_reaction_webhook
 from . import test_whatsapp_security
+from . import test_whatsapp_send
 from . import test_whatsapp_template
 from . import test_whatsapp_unread_count
 from . import test_whatsapp_webhook_http
