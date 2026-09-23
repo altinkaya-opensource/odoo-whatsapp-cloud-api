@@ -85,6 +85,9 @@ class WhatsAppChatbotScript(models.Model):
             "  values['END'] = True  # Stop until next button click\n\n"
             "Available modules: datetime, re, requests"
         ),
+        # The code runs with the webhook's sudo env, so writing it is as
+        # powerful as being an administrator.
+        groups="base.group_system",
     )
     option_ids = fields.One2many(
         comodel_name="whatsapp.chatbot.script.option",
@@ -152,7 +155,8 @@ class WhatsAppChatbotScript(models.Model):
         }
 
         # If not interactive or no code, return defaults
-        if self.step_type != "interactive" or not self.interactive_code:
+        code = self.sudo().interactive_code
+        if self.step_type != "interactive" or not code:
             return base_values
 
         # Prepare sandbox for safe_eval
@@ -196,7 +200,6 @@ class WhatsAppChatbotScript(models.Model):
             ),
             "_": _,
             "callable": callable,
-            "getattr": getattr,
             "len": len,
             "str": str,
             "int": int,
@@ -225,7 +228,7 @@ class WhatsAppChatbotScript(models.Model):
         # Execute the code
         try:
             safe_eval(
-                self.interactive_code,
+                code,
                 sandbox,
                 sandbox,
                 mode="exec",

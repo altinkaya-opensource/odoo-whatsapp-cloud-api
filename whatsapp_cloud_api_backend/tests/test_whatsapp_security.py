@@ -117,3 +117,40 @@ class TestWhatsAppSecurity(TransactionCase):
             upload_call.assert_not_called()
             backend.send_image_message("905550000001", attachment=own.id)
             upload_call.assert_called_once()
+
+    def _code_variable(self):
+        template = self.env["whatsapp.template"].create(
+            {
+                "name": "security_code_variable",
+                "waba_id": "security-test-waba",
+                "language": "en",
+                "model_id": self.env["ir.model"]._get("res.partner").id,
+                "components": [{"type": "BODY", "text": "Hi {{1}}"}],
+            }
+        )
+        return self.env["whatsapp.template.variable"].create(
+            {
+                "template_id": template.id,
+                "variable_position": 1,
+                "component_type": "body",
+                "value_type": "code",
+                "python_code": "result = record.name.upper()",
+            }
+        )
+
+    def test_only_administrators_edit_executable_code(self):
+        variable = self._code_variable()
+        with self.assertRaises(AccessError):
+            variable.with_user(self.manager).write({"python_code": "result = 1"})
+        script = self.env["whatsapp.chatbot.script"].search([], limit=1)
+        if script:
+            with self.assertRaises(AccessError):
+                script.with_user(self.manager).write({"interactive_code": "pass"})
+
+    def test_agents_still_render_code_variables(self):
+        variable = self._code_variable()
+        partner = self.env["res.partner"].create({"name": "code variable"})
+        value = variable.with_user(self.agent).get_value_from_record(
+            partner.with_user(self.agent)
+        )
+        self.assertEqual(value, "CODE VARIABLE")

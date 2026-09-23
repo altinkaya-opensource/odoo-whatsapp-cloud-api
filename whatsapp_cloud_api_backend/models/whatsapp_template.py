@@ -506,6 +506,9 @@ class WhatsAppTemplateVariable(models.Model):
             "  result = record.partner_id.name.upper()\n"
             "  result = record.amount_total * 1.18"
         ),
+        # Runs with the sender's env, sudo in the SMS fallback and webhooks:
+        # writing it is as powerful as being an administrator.
+        groups="base.group_system",
     )
 
     # Related model from template (for domain filtering)
@@ -534,7 +537,7 @@ class WhatsAppTemplateVariable(models.Model):
         if not record:
             return ""
 
-        if self.value_type == "code" and self.python_code:
+        if self.value_type == "code" and self.sudo().python_code:
             return self._eval_python_code(record)
         elif self.value_type == "field" and self.field_name:
             return self._get_field_value(record)
@@ -591,14 +594,13 @@ class WhatsAppTemplateVariable(models.Model):
             "len": len,
             "list": list,
             "dict": dict,
-            "getattr": getattr,
             "hasattr": hasattr,
             "result": "",
         }
 
         try:
             safe_eval(
-                self.python_code,
+                self.sudo().python_code,
                 sandbox,
                 sandbox,
                 mode="exec",
