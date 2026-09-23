@@ -27,7 +27,7 @@ class WebhookSender:
     def send_webhook(payload, backend):
         """Send webhook payload to configured URL."""
         webhook_url = backend.frontend_webhook_url
-        webhook_secret = backend.frontend_webhook_secret
+        webhook_secret = backend.sudo().frontend_webhook_secret
 
         if not webhook_url or not webhook_secret:
             raise ValueError("Webhook URL or secret not configured.")

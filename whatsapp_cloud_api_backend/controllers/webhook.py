@@ -432,12 +432,13 @@ class WhatsAppCloudAPIWebhookController(http.Controller):
 
         Both requests require Bearer token authentication.
         """
-        if not backend or not backend.api_token:
+        api_token = backend._get_api_token() if backend else False
+        if not api_token:
             _logger.error("Backend or API token not available for media download")
             return False
 
         headers = {
-            "Authorization": f"Bearer {backend.api_token}",
+            "Authorization": f"Bearer {api_token}",
         }
 
         try:
