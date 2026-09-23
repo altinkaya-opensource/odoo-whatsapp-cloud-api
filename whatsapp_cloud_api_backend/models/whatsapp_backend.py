@@ -20,8 +20,8 @@ import phonenumbers
 import requests
 from requests import RequestException
 
-from odoo import _, fields, models
-from odoo.exceptions import UserError
+from odoo import _, api, fields, models
+from odoo.exceptions import UserError, ValidationError
 
 _logger = logging.getLogger(__name__)
 
@@ -111,13 +111,12 @@ class WhatsAppBackend(models.Model):
         compute="_compute_template_count",
     )
 
-    _sql_constraints = [
-        (
-            "main_backend_unique",
-            "unique(main_backend)",
-            "There can be only one main WhatsApp backend.",
-        ),
-    ]
+    # Replaces unique(main_backend), which also allowed only one backend with
+    # main_backend = False. Odoo drops the old constraint on upgrade.
+    @api.constrains("main_backend")
+    def _check_single_main_backend(self):
+        if self.search_count([("main_backend", "=", True)]) > 1:
+            raise ValidationError(_("There can be only one main WhatsApp backend."))
 
     def _compute_template_count(self):
         Template = self.env["whatsapp.template"]
