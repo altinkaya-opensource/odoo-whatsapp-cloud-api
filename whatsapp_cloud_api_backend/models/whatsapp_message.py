@@ -1,6 +1,6 @@
 # Copyright (C) 2025 Ahmet Yiğit Budak
 # License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl-3.0.html)
-from odoo import api, fields, models, tools
+from odoo import SUPERUSER_ID, api, fields, models, tools
 
 from ..controllers.main import WP_ATTACHMENT_DOWNLOAD_PATH
 from .frontend_webhook import WebhookSender
@@ -120,6 +120,14 @@ class WhatsAppMessage(models.Model):
         comodel_name="whatsapp.message.read.status",
     )
 
+    is_automated = fields.Boolean(
+        string="Automated",
+        compute="_compute_is_automated",
+        store=True,
+        help="Created by the system (crons, SMS fallback) or by the chatbot, "
+        "which answers webhooks as the public user, rather than by an agent.",
+    )
+
     is_read_by_me = fields.Boolean(
         string="Read by Me",
         compute="_compute_is_read_by_me",
@@ -170,6 +178,12 @@ class WhatsAppMessage(models.Model):
         if "reaction_emoji" in vals:
             self.with_delay().send_webhook_payload("message.updated")
         return res
+
+    @api.depends("create_uid")
+    def _compute_is_automated(self):
+        for message in self:
+            creator = message.create_uid
+            message.is_automated = creator.id == SUPERUSER_ID or creator.share
 
     def _compute_is_read_by_me(self):
         for record in self:

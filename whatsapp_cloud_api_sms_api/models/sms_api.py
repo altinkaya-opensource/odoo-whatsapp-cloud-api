@@ -14,7 +14,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import logging
 
-from odoo import api, fields, models
+from odoo import SUPERUSER_ID, api, fields, models
 from odoo.exceptions import UserError
 
 _logger = logging.getLogger(__name__)
@@ -48,8 +48,9 @@ class SmsApi(models.AbstractModel):
         """
         whatsapp_result = []
         sms_list = []
-        # Company notifications: send from the company number whoever
-        # triggered the SMS, backend membership only limits agents.
+        # Company notifications: sent as the superuser, whoever triggered the
+        # SMS. Backend membership only limits agents, and the statistics
+        # count the messages as automated rather than as agent replies.
         backend_model = self.env["whatsapp.backend"].sudo()
         for msg in messages:
             sms_record = self.env["sms.sms"].browse(msg["res_id"])
@@ -65,6 +66,7 @@ class SmsApi(models.AbstractModel):
             if not backend_id:
                 sms_list.append(msg)
                 continue
+            backend_id = backend_id.with_user(SUPERUSER_ID)
             template = self.env["whatsapp.template"].search(
                 [
                     ("default_sms_template", "=", True),

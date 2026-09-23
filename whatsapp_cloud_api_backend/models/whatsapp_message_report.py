@@ -1,6 +1,6 @@
 # Copyright (C) 2026 Altinkaya Enclosures
 # License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl-3.0.html)
-from odoo import fields, models, tools
+from odoo import api, fields, models, tools
 
 # Threshold (in seconds) that splits a thread into separate sessions and
 # also caps how long a "first response" can take before it is treated as
@@ -98,15 +98,26 @@ class WhatsAppMessageReport(models.Model):
     count = fields.Integer(readonly=True)
 
     def init(self):
-        tools.drop_view_if_exists(self.env.cr, self._table)
-        self.env.cr.execute(
+        """Store the report as a materialized view, refreshed by a cron.
+
+        The window functions run over every message, so a plain view took
+        ~200 ms per query on 90k messages and grew with the table.
+        """
+        cr = self.env.cr
+        kind = tools.table_kind(cr, self._table)
+        if kind == "v":
+            tools.drop_view_if_exists(cr, self._table)
+        elif kind == "m":
+            cr.execute(f"DROP MATERIALIZED VIEW {self._table}")
+        cr.execute(
             f"""
-            CREATE OR REPLACE VIEW {self._table} AS
+            CREATE MATERIALIZED VIEW {self._table} AS
             WITH ordered AS (
                 SELECT
                     m.id, m.partner_id, m.backend_id, m.thread_id,
                     m.create_uid, m.create_date, m.timestamp,
                     m.direction, m.message_type, m.status, m.template_id,
+                    COALESCE(m.is_automated, FALSE) AS is_automated,
                     LAG(m.timestamp) OVER w AS prev_ts
                 FROM whatsapp_message m
                 WINDOW w AS (PARTITION BY m.thread_id ORDER BY m.timestamp, m.id)
@@ -139,7 +150,9 @@ class WhatsAppMessageReport(models.Model):
                 SELECT *,
                     MIN(
                         CASE
-                            WHEN direction='outgoing' AND timestamp >= first_in_ts
+                            WHEN direction='outgoing'
+                                 AND NOT is_automated
+                                 AND timestamp >= first_in_ts
                             THEN timestamp
                         END
                     ) OVER (PARTITION BY thread_id, session_seq) AS first_out_ts
@@ -151,7 +164,7 @@ class WhatsAppMessageReport(models.Model):
                 backend_id,
                 thread_id,
                 create_uid                          AS agent_user_id,
-                (create_uid = 1)                    AS is_system_user,
+                is_automated                        AS is_system_user,
                 direction,
                 message_type,
                 status,
@@ -203,3 +216,11 @@ class WhatsAppMessageReport(models.Model):
             """,
             {"gap": SESSION_GAP_SECONDS},
         )
+        # REFRESH ... CONCURRENTLY needs a unique index
+        cr.execute(f"CREATE UNIQUE INDEX {self._table}_id_uniq ON {self._table} (id)")
+
+    @api.model
+    def _refresh_report(self):
+        """Refresh the statistics without blocking readers."""
+        self.env["whatsapp.message"].flush_model()
+        self.env.cr.execute(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {self._table}")

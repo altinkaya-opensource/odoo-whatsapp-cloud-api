@@ -21,6 +21,7 @@
         "views/whatsapp_chatbot_views.xml",
         "views/res_partner_views.xml",
         "views/whatsapp_message_report_views.xml",
+        "data/ir_cron_data.xml",
     ],
     "assets": {
         "web.assets_backend": [
