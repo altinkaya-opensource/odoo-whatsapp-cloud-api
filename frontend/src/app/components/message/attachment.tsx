@@ -211,13 +211,15 @@ export default function AttachmentDisplay({
                 role="dialog"
                 aria-modal="true"
                 aria-label={attachment.name}
-                onClick={(event) => event.stopPropagation()}
               >
+                {/* Only the photo keeps the preview open; the blank space
+                    around it closes it through the backdrop. */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={downloadUrl}
                   alt={attachment.name}
                   className="max-h-full max-w-full object-contain"
+                  onClick={(event) => event.stopPropagation()}
                 />
                 <button
                   onClick={() => setIsLightboxOpen(false)}

@@ -261,11 +261,13 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
         const updatedMessagesMap = new Map(existingMessagesMap);
 
         let hasNewMessages = false;
+        let hasUpdatedMessages = false;
         let hasNewIncomingMessages = false;
 
         mappedMessages.forEach((newMessage, index) => {
           if (newMessage.id && existingMessagesMap.has(newMessage.id)) {
-            // Update existing message (e.g., status changes)
+            // Update existing message (e.g., status changes, reactions)
+            hasUpdatedMessages = true;
             updatedMessagesMap.set(newMessage.id, {
               ...existingMessagesMap.get(newMessage.id)!,
               ...newMessage,
@@ -292,7 +294,7 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
           }
         });
 
-        if (!hasNewMessages) {
+        if (!hasNewMessages && !hasUpdatedMessages) {
           return prev;
         }
 
@@ -338,8 +340,10 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
           return message;
         });
 
-        // Store the preview update to be executed in useEffect
-        if (updatedMessages.length > 0) {
+        // Store the preview update to be executed in useEffect. Not while the
+        // chat is still loading: the poll that runs on open can land first,
+        // and its "new" messages would re-date the thread and move it.
+        if (hasNewMessages && !prev.isLoading && updatedMessages.length > 0) {
           const latestMessage = updatedMessages[updatedMessages.length - 1];
           pendingPreviewUpdateRef.current = {
             threadId,

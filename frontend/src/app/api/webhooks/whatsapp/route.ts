@@ -5,7 +5,8 @@ import { eventBroadcaster } from "@/app/lib/events/broadcaster";
 /**
  * Webhook Event Types
  */
-type WebhookEventType = "thread.created" | "thread.updated" | "message.created";
+type WebhookEventType =
+  "thread.created" | "thread.updated" | "message.created" | "message.updated";
 
 /**
  * Webhook Payload Structure
@@ -235,6 +236,28 @@ export async function POST(request: NextRequest) {
       }
 
       broadcastCount = globalCount + threadCount;
+      break;
+    }
+
+    case "message.updated": {
+      // Only the open thread cares about an edited message. The global
+      // channel treats every event as a new arrival (sound, unread count).
+      if (!payload.thread_id) {
+        break;
+      }
+
+      const sseUpdate: SSEUpdate = {
+        type: "messages",
+        data: {
+          messages: [payload.data],
+          threadId: payload.thread_id.toString(),
+        },
+        timestamp: payload.timestamp,
+      };
+
+      const threadChannel = `messages:${payload.thread_id}`;
+      eventBroadcaster.broadcast(threadChannel, sseUpdate, backendId);
+      broadcastCount = eventBroadcaster.getListenerCount(threadChannel);
       break;
     }
 

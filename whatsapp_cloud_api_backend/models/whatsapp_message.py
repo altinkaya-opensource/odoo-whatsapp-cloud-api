@@ -162,6 +162,14 @@ class WhatsAppMessage(models.Model):
 
         return res
 
+    def write(self, vals):
+        res = super().write(vals)
+        # A reaction is stored on the message it targets, not as a new record,
+        # so the frontend only learns about it through an update event.
+        if "reaction_emoji" in vals:
+            self.with_delay().send_webhook_payload("message.updated")
+        return res
+
     def _compute_is_read_by_me(self):
         for record in self:
             read_status = record.read_status_ids.filtered(

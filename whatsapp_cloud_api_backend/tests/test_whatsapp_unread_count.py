@@ -94,3 +94,13 @@ class TestWhatsAppUnreadCount(TransactionCase):
     def test_archived_backend_is_excluded(self):
         self.backend.active = False
         self.assertEqual(self._get_count(), 0)
+
+    def test_search_threads_with_unread_messages(self):
+        domain = [("id", "=", self.thread.id), ("unread_count", ">", 0)]
+        threads = self.env["whatsapp.thread"].with_user(self.user)
+        self.assertEqual(threads.search(domain), self.thread)
+        self.statuses.write({"is_read": True})
+        self.assertFalse(threads.search(domain))
+        # The other user's unread messages still count for them only
+        other_threads = self.env["whatsapp.thread"].with_user(self.other_user)
+        self.assertEqual(other_threads.search(domain), self.thread)

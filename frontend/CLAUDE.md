@@ -138,8 +138,11 @@ it only to the SSE connections whose session may read that backend. A payload
 without `data.backend_id` gets rejected: without it there is no way to tell who
 is allowed to see the event.
 
-Three event types travel this path: `thread.created`, `thread.updated` and
-`message.created`. Thread events carry no unread count, because one payload
+Four event types travel this path: `thread.created`, `thread.updated`,
+`message.created` and `message.updated`. `message.updated` fires when a
+reaction lands on an existing message and goes only to that thread's channel,
+so it never plays a sound or bumps the unread count. Thread events carry no
+unread count, because one payload
 reaches every user of the backend and unread is per user. Each client keeps its
 own count and re-syncs the total from `/api/threads/unread-count`.
 

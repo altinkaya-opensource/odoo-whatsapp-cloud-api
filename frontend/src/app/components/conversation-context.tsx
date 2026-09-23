@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   ArrowSquareOut,
   BuildingsIcon,
+  CaretDoubleLeftIcon,
+  CaretDoubleRightIcon,
   ChatCircleDotsIcon,
   ChartLineUpIcon,
   ClockIcon,
@@ -17,6 +19,11 @@ import { useAuth } from "@/app/hooks/use-auth";
 import { useCurrentChat } from "@/app/hooks/use-current-chat";
 import { useTranslations } from "@/app/context/translation-provider";
 import Profile from "./profile";
+
+type ConversationContextProps = {
+  isCollapsed: boolean;
+  onToggleCollapsed: () => void;
+};
 
 type ContextRowProps = {
   icon: ReactNode;
@@ -140,7 +147,10 @@ function MetricTile({ icon, label, value }: MetricTileProps) {
   );
 }
 
-export default function ConversationContext() {
+export default function ConversationContext({
+  isCollapsed,
+  onToggleCollapsed,
+}: ConversationContextProps) {
   const {
     chatId,
     contact,
@@ -262,9 +272,40 @@ export default function ConversationContext() {
         : t("context.daysAgo", { count: analytics.daysSinceLastInvoice })
     : "";
 
+  if (isCollapsed) {
+    return (
+      <aside className="workspace-context hidden h-full min-h-0 flex-col items-center py-4 xl:flex">
+        <button
+          type="button"
+          onClick={onToggleCollapsed}
+          className="icon-action size-9"
+          aria-label={t("context.expand")}
+          aria-expanded={false}
+          title={t("context.expand")}
+        >
+          <CaretDoubleLeftIcon className="size-5" weight="bold" />
+        </button>
+      </aside>
+    );
+  }
+
+  const collapseButton = (
+    <button
+      type="button"
+      onClick={onToggleCollapsed}
+      className="icon-action size-9 shrink-0"
+      aria-label={t("context.collapse")}
+      aria-expanded={true}
+      title={t("context.collapse")}
+    >
+      <CaretDoubleRightIcon className="size-5" weight="bold" />
+    </button>
+  );
+
   if (!chatId) {
     return (
-      <aside className="workspace-context hidden h-full min-h-0 flex-col items-center justify-center p-6 text-center xl:flex">
+      <aside className="workspace-context relative hidden h-full min-h-0 flex-col items-center justify-center p-6 text-center xl:flex">
+        <div className="absolute right-5 top-4">{collapseButton}</div>
         <div className="mb-4 flex size-14 items-center justify-center rounded-2xl bg-[rgb(var(--accent-primary)/0.12)] text-[rgb(var(--accent-primary))]">
           <ChatCircleDotsIcon className="size-7" weight="fill" />
         </div>
@@ -284,9 +325,7 @@ export default function ConversationContext() {
         <p className="text-sm font-semibold text-[rgb(var(--text-primary))]">
           {t("context.title")}
         </p>
-        <span className="rounded-md bg-[rgb(var(--status-success)/0.14)] px-2 py-1 text-[11px] font-semibold text-[rgb(var(--status-success))]">
-          {t("context.channel")}
-        </span>
+        {collapseButton}
       </header>
 
       <section className="surface-card rounded-2xl p-4">

@@ -71,7 +71,8 @@
   },
   "context": {
     "title": "Customer context",
-    "channel": "WhatsApp",
+    "collapse": "Hide customer context",
+    "expand": "Show customer context",
     "emptyTitle": "Customer context",
     "emptyDescription": "Select a conversation to see the linked Odoo customer.",
     "unknownContact": "Unknown customer",

@@ -54,6 +54,7 @@ class WhatsAppThread(models.Model):
 
     unread_count = fields.Integer(
         compute="_compute_unread_count",
+        search="_search_unread_count",
     )
 
     has_avatar = fields.Boolean(
@@ -141,6 +142,32 @@ class WhatsAppThread(models.Model):
 
         for thread in self:
             thread.unread_count = counts.get(thread.id, 0)
+
+    @api.model
+    def _search_unread_count(self, operator, value):
+        """Find the threads holding unread messages for the current user.
+
+        Only ("unread_count", ">", 0) is supported: the chat list's unread
+        filter. A user can hold tens of thousands of unread statuses, so they
+        stay in a subquery instead of being loaded as records.
+        """
+        if (operator, value) != (">", 0):
+            raise NotImplementedError(
+                f"Unsupported unread_count search: {operator} {value}"
+            )
+        read_status = self.env["whatsapp.message.read.status"]
+        unread_statuses = read_status._search(
+            [("is_read", "=", False), ("user_id", "=", self.env.user.id)]
+        )
+        message_alias = unread_statuses.join(
+            read_status._table,
+            "message_id",
+            self.env["whatsapp.message"]._table,
+            "id",
+            "message_id",
+        )
+        thread_ids = unread_statuses.subselect(f'"{message_alias}"."thread_id"')
+        return [("id", "inselect", thread_ids)]
 
     def read(self, fields=None, load="_classic_read"):
         """Override to bypass res.partner record rules when reading partner_id.
