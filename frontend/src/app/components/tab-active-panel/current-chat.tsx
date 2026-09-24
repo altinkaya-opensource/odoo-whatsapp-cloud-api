@@ -19,6 +19,7 @@ import SuggestionChips from "../message/suggestion-chips";
 import { useTranslations } from "@/app/context/translation-provider";
 import { useAppConfig } from "@/app/hooks/use-app-config";
 import { userErrorMessage } from "@/app/lib/api-client";
+import { readAiStream } from "@/app/lib/ai/read-stream";
 import {
   ChatCircleDotsIcon,
   XCircleIcon,
@@ -28,6 +29,7 @@ import {
 
 // Placeholder bubbles while a chat that is not cached yet loads
 const LOADING_BUBBLE_WIDTHS = ["55%", "40%", "65%", "35%"];
+const SERVICE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export default function CurrentChat() {
   const {
@@ -89,14 +91,20 @@ export default function CurrentChat() {
     setTranslatingMessageId(null);
   }, [chatId]);
 
-  // Check if the 24-hour customer service window has expired
+  // WhatsApp's customer-service window: 24 hours after the customer's last
+  // message. It can close while the chat is open, so check every minute.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
   const isServiceWindowExpired = useMemo(() => {
-    if (isLoading || messages.length === 0) return false;
-    const lastIncoming = [...messages].reverse().find((m) => !m.isSentFromUser);
-    if (!lastIncoming) return false;
-    const twentyFourHours = 24 * 60 * 60 * 1000;
-    return Date.now() - lastIncoming.timestamp > twentyFourHours;
-  }, [messages, isLoading]);
+    if (isLoading) return false;
+    const lastIncoming = messages.findLast((m) => !m.isSentFromUser);
+    return lastIncoming
+      ? now - lastIncoming.timestamp > SERVICE_WINDOW_MS
+      : false;
+  }, [messages, isLoading, now]);
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -242,55 +250,7 @@ export default function CurrentChat() {
         }),
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to improve text");
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error("Response body is not readable");
-      }
-
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let accumulatedText = "";
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          // Append new chunk to buffer
-          buffer += decoder.decode(value, { stream: true });
-
-          // Process complete lines from buffer
-          while (true) {
-            const lineEnd = buffer.indexOf("\n");
-            if (lineEnd === -1) break;
-
-            const line = buffer.slice(0, lineEnd).trim();
-            buffer = buffer.slice(lineEnd + 1);
-
-            if (line.startsWith("data: ")) {
-              const data = line.slice(6);
-              if (data === "[DONE]") break;
-
-              try {
-                const parsed = JSON.parse(data);
-                const content = parsed.content;
-                if (content) {
-                  accumulatedText += content;
-                  setMessageText(accumulatedText);
-                }
-              } catch {
-                // Ignore invalid JSON
-              }
-            }
-          }
-        }
-      } finally {
-        reader.cancel();
-      }
+      await readAiStream(response, setMessageText);
     } catch (error) {
       console.error("[AI] Improve failed:", error);
       setSendError(t("chatInput.aiImproveError"));
@@ -321,55 +281,7 @@ export default function CurrentChat() {
         }),
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to translate text");
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error("Response body is not readable");
-      }
-
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let accumulatedText = "";
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          // Append new chunk to buffer
-          buffer += decoder.decode(value, { stream: true });
-
-          // Process complete lines from buffer
-          while (true) {
-            const lineEnd = buffer.indexOf("\n");
-            if (lineEnd === -1) break;
-
-            const line = buffer.slice(0, lineEnd).trim();
-            buffer = buffer.slice(lineEnd + 1);
-
-            if (line.startsWith("data: ")) {
-              const data = line.slice(6);
-              if (data === "[DONE]") break;
-
-              try {
-                const parsed = JSON.parse(data);
-                const content = parsed.content;
-                if (content) {
-                  accumulatedText += content;
-                  setMessageText(accumulatedText);
-                }
-              } catch {
-                // Ignore invalid JSON
-              }
-            }
-          }
-        }
-      } finally {
-        reader.cancel();
-      }
+      await readAiStream(response, setMessageText);
     } catch (error) {
       console.error("[AI] Translate failed:", error);
       setSendError(t("chatInput.translateError"));
