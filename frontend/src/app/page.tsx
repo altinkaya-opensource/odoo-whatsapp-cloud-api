@@ -169,9 +169,8 @@ function NotificationRouter() {
 }
 
 function ResponsiveLayout() {
-  const { isMobile, isInitialized } = useResponsive();
+  const { isMobile } = useResponsive();
   const { currentView } = useMobileNavigation();
-  const { t } = useTranslations();
   // The grid only renders after hydration, so reading storage here cannot
   // cause a server/client markup mismatch.
   const [isContextCollapsed, setIsContextCollapsed] = useState(
@@ -190,22 +189,6 @@ function ResponsiveLayout() {
       // Blocked storage: the choice lasts until the page reloads
     }
   };
-
-  // Use a shaped loading state instead of a blank page while responsive
-  // layout information becomes available after hydration.
-  if (!isInitialized) {
-    return (
-      <section className="app-shell flex h-[100dvh] items-center justify-center p-6">
-        <div className="surface-card flex w-full max-w-sm flex-col gap-5 rounded-2xl p-6">
-          <div className="h-3 w-24 animate-pulse rounded-full bg-[rgb(var(--bg-tertiary))]" />
-          <div className="h-9 w-3/4 animate-pulse rounded-xl bg-[rgb(var(--bg-secondary))]" />
-          <p className="text-sm text-[rgb(var(--text-secondary))]">
-            {t("app.loadingWorkspace")}
-          </p>
-        </div>
-      </section>
-    );
-  }
 
   // Mobile layout: single panel view
   if (isMobile) {
