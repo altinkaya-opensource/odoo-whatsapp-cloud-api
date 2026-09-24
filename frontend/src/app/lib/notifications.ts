@@ -105,6 +105,9 @@ export const setActiveThread = (threadId: string | null) => {
   activeThreadId = threadId;
 };
 
+/** Whether this thread is the one open in the chat pane. */
+export const isActiveThread = (threadId: string) => activeThreadId === threadId;
+
 export const getNotificationPermission = (): NotificationPermission | null => {
   if (!isBrowser() || !("Notification" in window)) {
     return null;

@@ -46,8 +46,8 @@ ODOO_JSONRPC_PORT=8069
 ODOO_JSONRPC_PROTOCOL=http
 ODOO_JSONRPC_DATABASE=your_database
 
-# Signs the webhooks Odoo sends here (openssl rand -hex 32)
-ODOO_WEBHOOK_SECRET=
+# Optional: Odoo's websocket when it is not /websocket next to JSON-RPC
+ODOO_WEBSOCKET_URL=
 
 # Optional, for the AI reply helpers
 AI_CHAT_ENABLED=false

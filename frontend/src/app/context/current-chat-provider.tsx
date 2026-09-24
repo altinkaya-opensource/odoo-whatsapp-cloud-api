@@ -13,7 +13,7 @@ import { useChats } from "../hooks/use-chats";
 import { useContacts } from "../hooks/use-contacts";
 import { Contact } from "./contacts-provider";
 import { useAuth } from "../hooks/use-auth";
-import { useSSE } from "../hooks/use-sse";
+import { useRealtime } from "../hooks/use-realtime";
 import { useConnection } from "./connection-provider";
 import { apiFetch } from "../lib/api-client";
 import { markMessagesAsSeen, setActiveThread } from "../lib/notifications";
@@ -202,39 +202,20 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
     [sessionId, markChatAsRead, queryClient]
   );
 
-  // Realtime changes of the open thread (new messages, statuses, reactions)
-  const handleMessagesUpdate = useCallback(
-    (records: unknown[], threadId: string) => {
-      if (threadId !== chatId) {
-        return;
-      }
-      const updates = (records as OdooMessageRecord[]).map((record) =>
-        toMessage(record, threadId)
-      );
-      const hasNewIncoming = updates.some(
-        (message) =>
-          !message.isSentFromUser && !knownMessageIdsRef.current.has(message.id)
-      );
-      upsertCachedMessages(queryClient, threadId, updates);
-      // The user is reading this thread
-      if (hasNewIncoming) {
+  // ChatsProvider puts realtime messages in the cache; a customer message
+  // arriving in the open chat is read by the user.
+  useRealtime({
+    onMessage: (event, threadId, record) => {
+      if (
+        event === "created" &&
+        threadId === chatId &&
+        record.direction === "incoming" &&
+        !knownMessageIdsRef.current.has(String(record.id))
+      ) {
         markThreadRead(threadId);
       }
     },
-    [chatId, queryClient, markThreadRead]
-  );
-
-  useSSE(
-    {
-      onMessagesUpdate: handleMessagesUpdate,
-      onError: reportApiError,
-      onReconnect: reportConnectionRestored,
-    },
-    {
-      threadId: chatId,
-      enabled: !!sessionId && !!chatId,
-    }
-  );
+  });
 
   // The header follows the chat list (partner, name, backend) as it changes
   const listedChat = useMemo(

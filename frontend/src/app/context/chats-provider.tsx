@@ -16,15 +16,20 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useAuth } from "../hooks/use-auth";
-import { useSSE } from "../hooks/use-sse";
-import { useConnection } from "./connection-provider";
+import { useRealtime } from "../hooks/use-realtime";
 import { apiFetch } from "../lib/api-client";
 import { buildPartnerAvatarUrl } from "../lib/odoo/avatar-url";
-import { notifyIncomingMessage, setUnreadBadge } from "../lib/notifications";
+import {
+  isActiveThread,
+  notifyIncomingMessage,
+  setUnreadBadge,
+} from "../lib/notifications";
+import { upsertCachedMessages } from "../lib/whatsapp/message-cache";
 import {
   compareByRecency,
   mergeChat,
   toChat,
+  toMessage,
   type OdooMessageRecord,
   type OdooThreadRecord,
 } from "../lib/whatsapp/records";
@@ -182,7 +187,6 @@ export default function ChatsProvider({
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState<string>("");
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { sessionId } = useAuth();
-  const { reportApiError, reportConnectionRestored } = useConnection();
   const queryClient = useQueryClient();
   const search = debouncedSearchQuery.trim();
 
@@ -335,19 +339,9 @@ export default function ChatsProvider({
     setUnreadBadge(totalUnreadCount);
   }, [totalUnreadCount]);
 
-  const handleThreadsUpdate = useCallback(
-    (threads: unknown[]) => {
-      for (const record of threads as OdooThreadRecord[]) {
-        upsertCachedChat(queryClient, toChat(record, avatarUrl));
-      }
-    },
-    [queryClient, avatarUrl]
-  );
-
   // New messages: alert, bump the unread count, move the thread up
   const handleMessageArrival = useCallback(
-    (messages: unknown[], threadId: string) => {
-      const records = messages as OdooMessageRecord[];
+    (records: OdooMessageRecord[], threadId: string) => {
       if (records.length === 0) {
         return;
       }
@@ -367,8 +361,8 @@ export default function ChatsProvider({
           title: threadName ?? "WhatsApp",
           body: record.body || "New message",
         });
-        // The thread on screen is marked read at once: not counted
-        if (isNew && interrupted) {
+        // The open thread is marked read at once, even in a hidden tab
+        if (isNew && interrupted && !isActiveThread(threadId)) {
           unreadIncrement += 1;
         }
       }
@@ -388,32 +382,19 @@ export default function ChatsProvider({
     [queryClient]
   );
 
-  const { isConnected: sseConnected } = useSSE(
-    {
-      onThreadsUpdate: handleThreadsUpdate,
-      onMessagesUpdate: handleMessageArrival,
-      onError: reportApiError,
-      onReconnect: reportConnectionRestored,
+  useRealtime({
+    onThread: (record) =>
+      upsertCachedChat(queryClient, toChat(record, avatarUrl)),
+    onMessage: (event, threadId, record) => {
+      // Cached chats stay current even when they are not open
+      upsertCachedMessages(queryClient, threadId, [
+        toMessage(record, threadId),
+      ]);
+      if (event === "created") {
+        handleMessageArrival([record], threadId);
+      }
     },
-    {
-      enabled: !!sessionId,
-      threadId: null, // Subscribe to GLOBAL messages and thread updates
-    }
-  );
-
-  // Events sent while the stream was down are lost: catch up on reconnect
-  const wasConnectedRef = useRef(false);
-  useEffect(() => {
-    if (sseConnected && wasConnectedRef.current === false) {
-      wasConnectedRef.current = true;
-      return;
-    }
-    if (sseConnected) {
-      queryClient.invalidateQueries({ queryKey: ["threads"] });
-      queryClient.invalidateQueries({ queryKey: ["unread-count"] });
-      queryClient.invalidateQueries({ queryKey: ["messages"] });
-    }
-  }, [sseConnected, queryClient]);
+  });
 
   const updateFilter = (value: string) => {
     setFilter(value as Filters);

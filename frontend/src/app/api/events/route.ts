@@ -1,240 +1,102 @@
 import { NextRequest } from "next/server";
-import { eventBroadcaster } from "@/app/lib/events/broadcaster";
+import { getBusConnection, type BusSignal } from "@/app/lib/realtime/odoo-bus";
+import { isSessionAlive, isValidSessionId } from "@/app/lib/odoo/server";
 import { sessionCache } from "@/app/lib/session-cache";
 
-const ensureEnv = () => {
-  // No Odoo connection required - we use cached backend_ids
-};
+// Proxies close idle streams: a comment line keeps this one open
+const HEARTBEAT_INTERVAL_MS = 20_000;
+// How long the browser waits before reconnecting a dropped stream
+const RETRY_MS = 3_000;
 
-type SSEUpdate = {
-  type: "threads" | "messages" | "heartbeat";
-  data?: {
-    threads?: unknown[];
-    messages?: unknown[];
-    threadId?: string;
-  };
-  timestamp: number;
-};
-
-const HEARTBEAT_INTERVAL_MS = 30000; // 30 seconds
-
-// Per-session connection count. Redis if this ever runs on more than one node.
-const activeConnections = new Map<string, number>();
-
+/**
+ * One event stream per tab, fed by the session's Odoo bus connection.
+ *
+ * Each event carries the bus notification id; a tab that reconnects sends
+ * the last one it saw and gets what it missed, or a "resync" event when that
+ * is no longer available.
+ */
 export async function GET(request: NextRequest) {
-  try {
-    ensureEnv();
-  } catch (error) {
-    return new Response(
-      JSON.stringify({
-        error:
-          error instanceof Error ? error.message : "Server configuration error",
-      }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      }
-    );
-  }
-
-  // Get URL parameters
   const url = new URL(request.url);
+  // EventSource cannot set headers, so the session comes in the query
   const sessionId =
     request.headers.get("x-session-id") || url.searchParams.get("sessionId");
-
-  if (!sessionId) {
-    return new Response(JSON.stringify({ error: "Missing Odoo session id" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  const threadId = url.searchParams.get("threadId");
-
-  // Get user's allowed backends from server-side cache (populated during auth)
-  const allowedBackendIds = sessionCache.get(sessionId);
-
-  if (!allowedBackendIds) {
-    console.warn(
-      "[SSE] Rejected connection: session not in cache (expired or invalid)"
-    );
-    return new Response(
-      JSON.stringify({
-        error: "Invalid or expired session ID. Please log in again.",
-      }),
-      {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      }
+  if (!isValidSessionId(sessionId) || !(await isSessionAlive(sessionId!))) {
+    return Response.json(
+      { error: "Invalid or expired session" },
+      { status: 401 }
     );
   }
-
-  if (allowedBackendIds.length === 0) {
-    console.warn("[SSE] Rejected connection: session has no backend access");
-    return new Response(
-      JSON.stringify({
-        error: "No WhatsApp backends available for this user",
-      }),
-      {
-        status: 403,
-        headers: { "Content-Type": "application/json" },
-      }
-    );
-  }
-
-  console.log(
-    `[SSE] Connection authorized for backends: [${allowedBackendIds.join(", ")}]`
-  );
-
-  const connectionKey = `${sessionId}-${threadId || "global"}`;
-  const currentConnections = activeConnections.get(connectionKey) || 0;
-
-  if (currentConnections >= 3) {
-    // Max 3 connections per session+thread
-    return new Response(
-      JSON.stringify({ error: "Too many active connections for this session" }),
-      {
-        status: 429,
-        headers: { "Content-Type": "application/json" },
-      }
-    );
-  }
-
-  // Track connection
-  activeConnections.set(connectionKey, currentConnections + 1);
+  const lastEventIdParam =
+    request.headers.get("last-event-id") || url.searchParams.get("lastEventId");
+  const lastEventId = lastEventIdParam ? Number(lastEventIdParam) : null;
 
   const encoder = new TextEncoder();
-  // The counter is incremented above, so every exit path below has to run
-  // exactly one cleanup or the session locks itself out at 3 connections.
-  const decrementConnection = () => {
-    const connections = activeConnections.get(connectionKey) || 1;
-    if (connections <= 1) {
-      activeConnections.delete(connectionKey);
-    } else {
-      activeConnections.set(connectionKey, connections - 1);
-    }
-  };
-  let releaseConnection = decrementConnection;
+  let cleanup = () => {};
 
   const stream = new ReadableStream({
     start(controller) {
-      const sendSSEMessage = (update: SSEUpdate) => {
-        const message = `data: ${JSON.stringify(update)}\n\n`;
-        controller.enqueue(encoder.encode(message));
-      };
-
-      console.log(
-        `[SSE] Client connected: ${connectionKey} (total connections: ${activeConnections.get(connectionKey)})`
-      );
-
-      // Send initial heartbeat
-      const initialTimestamp = Date.now();
-      sendSSEMessage({ type: "heartbeat", timestamp: initialTimestamp });
-
-      // Subscribe to webhook events via EventBroadcaster with backend access control
-      const threadsChannel = "threads";
-      const messagesChannel = threadId ? `messages:${threadId}` : "messages";
-
-      const listenerMetadata = {
-        allowedBackendIds,
-        sessionId,
-      };
-
-      // Thread events listener
-      const unsubscribeThreads = eventBroadcaster.subscribe(
-        threadsChannel,
-        (data) => {
-          const update = data as SSEUpdate;
-          sendSSEMessage(update);
-        },
-        listenerMetadata
-      );
-
-      // Message events listener
-      const unsubscribeMessages = eventBroadcaster.subscribe(
-        messagesChannel,
-        (data) => {
-          const update = data as SSEUpdate;
-          sendSSEMessage(update);
-        },
-        listenerMetadata
-      );
-
-      console.log(
-        `[SSE] Subscribed to channels: ${threadsChannel}, ${messagesChannel}`
-      );
-
-      // Heartbeat
-      let lastHeartbeat = Date.now();
-      let heartbeatCount = 0;
-
-      const sendHeartbeat = () => {
-        const now = Date.now();
-
-        // Send heartbeat
-        if (now - lastHeartbeat >= HEARTBEAT_INTERVAL_MS) {
-          heartbeatCount++;
-          sendSSEMessage({ type: "heartbeat", timestamp: now });
-          lastHeartbeat = now;
-
-          // Keep the session alive for as long as the tab holds the stream
-          sessionCache.touch(sessionId);
+      const write = (chunk: string) => {
+        try {
+          controller.enqueue(encoder.encode(chunk));
+        } catch {
+          cleanup();
         }
       };
+      const send = (signal: BusSignal) => {
+        const id = "id" in signal ? `id: ${signal.id}\n` : "";
+        const data =
+          "id" in signal
+            ? { type: signal.type, payload: signal.payload }
+            : { type: signal.type };
+        write(`${id}data: ${JSON.stringify(data)}\n\n`);
+      };
 
-      // Start heartbeat interval
-      const heartbeatIntervalId = setInterval(
-        sendHeartbeat,
-        HEARTBEAT_INTERVAL_MS
-      );
+      write(`retry: ${RETRY_MS}\n\n`);
+      const connection = getBusConnection(sessionId!);
+      const { replay, unsubscribe } = connection.subscribe(send, lastEventId);
+      if (replay === null) {
+        write(`data: ${JSON.stringify({ type: "resync" })}\n\n`);
+      } else {
+        replay.forEach(send);
+      }
 
-      // Cleanup on connection close - safe to call more than once
+      const heartbeat = setInterval(() => {
+        write(": ping\n\n");
+        // Keep the session cache warm for as long as a tab is open
+        sessionCache.touch(sessionId!);
+      }, HEARTBEAT_INTERVAL_MS);
+
       let isCleanedUp = false;
-      const cleanup = () => {
+      cleanup = () => {
         if (isCleanedUp) {
           return;
         }
         isCleanedUp = true;
-
-        console.log(
-          `[SSE] Client disconnected: ${connectionKey} (heartbeats sent: ${heartbeatCount})`
-        );
-
-        // Clear heartbeat interval
-        clearInterval(heartbeatIntervalId);
-
-        // Unsubscribe from webhook events
-        unsubscribeThreads();
-        unsubscribeMessages();
-
-        decrementConnection();
-
+        clearInterval(heartbeat);
+        unsubscribe();
         try {
           controller.close();
         } catch {
-          // Connection already closed
+          // Already closed
         }
       };
-
-      releaseConnection = cleanup;
-
-      // Handle client disconnect. A request that was aborted before the
-      // stream started never fires the event, so check the state too.
       request.signal.addEventListener("abort", cleanup);
       if (request.signal.aborted) {
         cleanup();
       }
     },
     cancel() {
-      releaseConnection();
+      cleanup();
     },
   });
 
   return new Response(stream, {
     headers: {
       "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
+      "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
+      // nginx would otherwise buffer the stream
+      "X-Accel-Buffering": "no",
     },
   });
 }

@@ -6,8 +6,8 @@
 - **Framework**: Next.js 16 (App Router, Turbopack)
 - **Styling**: Tailwind CSS
 - **Icons**: Phosphor Icons (`@phosphor-icons/react`)
-- **State**: React Context
-- **Real-time**: Server-Sent Events fed by Odoo webhooks
+- **State**: TanStack Query for server state, React Context for the rest
+- **Real-time**: Server-Sent Events fed by the Odoo bus
 - **Backend**: Odoo JSON-RPC
 - **Package manager**: bun. Do not use npm, yarn or pnpm.
 
@@ -17,7 +17,8 @@
 - `src/app/components/` - React components
 - `src/app/context/` - Context providers
 - `src/app/hooks/` - Custom hooks
-- `src/app/lib/` - Odoo client, notifications, event broadcaster, session cache
+- `src/app/lib/` - Odoo client, API client, WhatsApp record mappers and
+  message cache, Odoo bus connection, notifications, session cache
 - `src/app/locales/` - `en.json` and `tr.json`
 - `public/` - Static assets
 
@@ -76,8 +77,8 @@ ODOO_JSONRPC_PORT=8069
 ODOO_JSONRPC_PROTOCOL=http
 ODOO_JSONRPC_DATABASE=your_database
 
-# Signs the webhooks Odoo sends here (openssl rand -hex 32)
-ODOO_WEBHOOK_SECRET=
+# Optional: Odoo's websocket when it is not /websocket next to JSON-RPC
+ODOO_WEBSOCKET_URL=
 ```
 
 ### API Route Pattern
@@ -128,45 +129,42 @@ const { isMobile } = useResponsive();
 ## Real-Time Updates
 
 ```
-Odoo → webhook → Next.js → EventBroadcaster → SSE → browser
+Odoo bus → one websocket per session (Next.js) → one SSE stream per tab → query cache
 ```
 
-Odoo fires a webhook whenever a thread or message record changes. The endpoint
-at `/api/webhooks/whatsapp` checks the HMAC-SHA256 signature against
-`ODOO_WEBHOOK_SECRET` and hands the payload to the broadcaster, which delivers
-it only to the SSE connections whose session may read that backend. A payload
-without `data.backend_id` gets rejected: without it there is no way to tell who
-is allowed to see the event.
+Odoo publishes thread and message changes on its bus (`bus.bus`), once per
+record and transaction, on the channel of the thread's backend.
+`src/app/lib/realtime/odoo-bus.ts` opens one websocket to Odoo's `/websocket`
+per Odoo session, with the session cookie and an `Origin` header, and
+subscribes to the `whatsapp` channel; Odoo adds the channels of the user's
+backends and re-checks the session on every message, so the frontend keeps no
+access list. A closed session (`4001`) reaches the tabs as `session-expired`.
 
-Four event types travel this path: `thread.created`, `thread.updated`,
-`message.created` and `message.updated`. `message.updated` fires when a
-reaction lands on an existing message and goes only to that thread's channel,
-so it never plays a sound or bumps the unread count. Thread events carry no
-unread count, because one payload
-reaches every user of the backend and unread is per user. Each client keeps its
-own count and re-syncs the total from `/api/threads/unread-count`.
+`/api/events` serves one stream per tab from that connection. Every event
+carries the bus notification id; a tab that reconnects sends the last id it
+saw and gets the events it missed from a 500-event buffer, or a `resync`
+event, which reloads the cached threads, messages and unread count.
 
-`/api/events` sends a heartbeat every 30 seconds and touches the session cache
-so an open tab keeps its session alive. Polling covers what webhooks miss: the
-thread list every 10 minutes, messages in the open thread on the same interval.
+Two event types: `whatsapp/thread` (chat list fields) and `whatsapp/message`
+(`created`, or `updated` for status, reaction, body or attachment changes).
+Neither carries an unread count, because one event reaches every user of the
+backend and unread is per user; each client counts its own and re-syncs the
+total from `/api/threads/unread-count`.
+
+`RealtimeProvider` owns the tab's stream (none for a tab blocked by the
+single-tab rule). Subscribe with `useRealtime`:
 
 ```typescript
-const { isConnected } = useSSE(
-  {
-    onThreadsUpdate: (threads) => {},
-    onMessagesUpdate: (messages, threadId) => {},
-    onError: (error) => {},
-    onReconnect: () => {},
-  },
-  { threadId: "123", enabled: !!sessionId }
-);
+useRealtime({
+  onThread: (record) => {},
+  onMessage: (event, threadId, record) => {},
+});
 ```
 
-`src/app/lib/events/broadcaster.ts` is an in-memory pub/sub, so it works for a
-single instance. Horizontal scaling needs Redis pub/sub in its place.
-
-The Odoo side needs the frontend webhook URL configured on the backend record:
-`https://your-domain.com/api/webhooks/whatsapp`.
+The bus connections live in the Next.js process, so it works for a single
+instance. The websocket URL defaults to `/websocket` next to JSON-RPC; set
+`ODOO_WEBSOCKET_URL` when Odoo serves it elsewhere (multi-worker Odoo serves it
+on the gevent port, usually through nginx).
 
 ## Notifications
 
@@ -207,12 +205,17 @@ const { theme, setTheme, toggleTheme } = useTheme();
 
 ## State Management
 
-Providers: `AuthProvider`, `ChatsProvider`, `CurrentChatProvider`,
-`ContactsProvider`, `TranslationProvider`, `ThemeProvider`, `ConnectionProvider`,
-`MobileNavigationProvider`, `TabSyncProvider`, `ProfileProvider`.
+Server state (threads, messages, message search, unread count) lives in the
+TanStack Query cache (`QueryProvider`); realtime events and sends patch it
+through `src/app/lib/whatsapp/`. Client state lives in providers:
+`AuthProvider`, `ChatsProvider`, `CurrentChatProvider`, `RealtimeProvider`,
+`ContactsProvider`, `TranslationProvider`, `ThemeProvider`,
+`ConnectionProvider`, `MobileNavigationProvider`, `TabSyncProvider`,
+`ProfileProvider`.
 
 Reach them through their hooks (`useAuth`, `useChats`, `useCurrentChat`,
-`useTheme`, `useTranslations`), never through `useContext` directly.
+`useRealtime`, `useTheme`, `useTranslations`), never through `useContext`
+directly.
 
 ## Security Notes
 

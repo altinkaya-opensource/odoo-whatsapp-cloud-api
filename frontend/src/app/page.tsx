@@ -27,6 +27,7 @@ import {
 import { ThemeProvider } from "./context/theme-provider";
 import ConnectionProvider from "./context/connection-provider";
 import QueryProvider from "./context/query-provider";
+import RealtimeProvider from "./context/realtime-provider";
 import ConnectionOverlay from "./components/connection-overlay";
 import {
   MobileNavigationProvider,
@@ -280,16 +281,18 @@ function AppShell() {
     <ProfileProvider>
       <TabProvider>
         <ContactsProvider>
-          <ChatsProvider includeThreadId={initialThreadId}>
-            <PageTitleUpdater />
-            <CurrentChatProvider>
-              <MobileNavigationProvider>
-                <AutoSelectChat />
-                <NotificationRouter />
-                <ResponsiveLayout />
-              </MobileNavigationProvider>
-            </CurrentChatProvider>
-          </ChatsProvider>
+          <RealtimeProvider>
+            <ChatsProvider includeThreadId={initialThreadId}>
+              <PageTitleUpdater />
+              <CurrentChatProvider>
+                <MobileNavigationProvider>
+                  <AutoSelectChat />
+                  <NotificationRouter />
+                  <ResponsiveLayout />
+                </MobileNavigationProvider>
+              </CurrentChatProvider>
+            </ChatsProvider>
+          </RealtimeProvider>
         </ContactsProvider>
       </TabProvider>
     </ProfileProvider>

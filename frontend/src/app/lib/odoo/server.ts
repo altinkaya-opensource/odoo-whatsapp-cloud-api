@@ -47,33 +47,18 @@ export const isValidSessionId = (value: string | null | undefined): boolean =>
   typeof value === "string" && /^[a-f0-9]{40}$/i.test(value);
 
 /**
- * Resolve the caller's Odoo session, or return the 401 response to send back.
+ * Tell whether Odoo still accepts this session.
  *
  * Sessions that authenticated through this app are in the in-memory cache;
- * anything else is checked once against Odoo and then cached, so a restart or
- * an SSO hand-off does not lock a valid user out.
+ * anything else is checked once against Odoo, so a restart or an SSO
+ * hand-off does not lock a valid user out.
  */
-export const requireSession = async (
-  request: Request
-): Promise<{ sessionId: string } | { response: NextResponse }> => {
-  const sessionId = request.headers.get("x-session-id");
-
-  if (!isValidSessionId(sessionId)) {
-    return {
-      response: NextResponse.json(
-        { error: "Missing Odoo session id" },
-        { status: 401 }
-      ),
-    };
+export const isSessionAlive = async (sessionId: string): Promise<boolean> => {
+  if (sessionCache.has(sessionId)) {
+    return true;
   }
-
-  const validSessionId = sessionId as string;
-  if (sessionCache.has(validSessionId)) {
-    return { sessionId: validSessionId };
-  }
-
   try {
-    const session = createOdooClient().createSession(validSessionId);
+    const session = createOdooClient().createSession(sessionId);
     const info = await session.call<{ uid?: number }>(
       "ir.http",
       "session_info",
@@ -81,13 +66,24 @@ export const requireSession = async (
       {},
       false
     );
-    if (typeof info?.uid === "number" && info.uid > 0) {
-      return { sessionId: validSessionId };
-    }
+    return typeof info?.uid === "number" && info.uid > 0;
   } catch (error) {
     console.error("[Auth] Session validation failed:", error);
+    return false;
   }
+};
 
+/** Resolve the caller's Odoo session, or return the 401 response to send. */
+export const requireSession = async (
+  request: Request
+): Promise<{ sessionId: string } | { response: NextResponse }> => {
+  const sessionId = request.headers.get("x-session-id");
+  if (
+    isValidSessionId(sessionId) &&
+    (await isSessionAlive(sessionId as string))
+  ) {
+    return { sessionId: sessionId as string };
+  }
   return {
     response: NextResponse.json(
       { error: "Invalid or expired session" },
