@@ -108,11 +108,12 @@ const parseJsonRpcResponse = <T>(data: JsonRpcResponse<T>): T => {
     throw err;
   }
 
-  if (typeof data.result === "undefined") {
-    throw new Error("Unexpected JSON-RPC response: missing result value");
+  if (data.jsonrpc !== JSON_RPC_VERSION) {
+    throw new Error("Unexpected JSON-RPC response");
   }
 
-  return data.result;
+  // Odoo leaves "result" out when the method returns None
+  return (data.result ?? null) as T;
 };
 
 const assertHost = (host?: string): host is string => {

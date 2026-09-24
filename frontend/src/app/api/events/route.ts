@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getBusConnection, type BusSignal } from "@/app/lib/realtime/odoo-bus";
-import { resolveSession } from "@/app/lib/odoo/server";
+import { requireSession } from "@/app/lib/odoo/server";
 
 // Proxies close idle streams: a comment line keeps this one open
 const HEARTBEAT_INTERVAL_MS = 20_000;
@@ -16,10 +16,7 @@ const RETRY_MS = 3_000;
  */
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
-  // EventSource cannot set headers, so the session comes in the query
-  const auth = await resolveSession(
-    request.headers.get("x-session-id") || url.searchParams.get("sessionId")
-  );
+  const auth = await requireSession(request);
   if ("response" in auth) {
     return auth.response;
   }

@@ -10,7 +10,6 @@ import {
   FileVideo,
   Image as ImageIcon,
 } from "@phosphor-icons/react";
-import { useAuth } from "@/app/hooks/use-auth";
 import { useTranslations } from "@/app/context/translation-provider";
 import { useEffect, useState, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
@@ -83,7 +82,6 @@ const formatFileSize = (bytes: number): string => {
 export default function AttachmentDisplay({
   attachment,
 }: AttachmentDisplayProps) {
-  const { sessionId } = useAuth();
   const { t } = useTranslations();
   const [isImageLoaded, setIsImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
@@ -91,7 +89,7 @@ export default function AttachmentDisplay({
   const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
   const attachmentType =
     attachment.type ?? getAttachmentType(attachment.mimetype);
-  const downloadUrl = `/api/attachments/download?url=${encodeURIComponent(attachment.url)}&session_id=${sessionId}`;
+  const downloadUrl = `/api/attachments/download?url=${encodeURIComponent(attachment.url)}`;
 
   useEffect(() => {
     setPortalRoot(document.body);
@@ -115,10 +113,7 @@ export default function AttachmentDisplay({
   const handleDownload = async (event: MouseEvent<HTMLElement>) => {
     event.stopPropagation();
     try {
-      const response = await fetch(downloadUrl, {
-        method: "GET",
-        headers: { "x-session-id": sessionId || "" },
-      });
+      const response = await fetch(downloadUrl);
 
       if (!response.ok) {
         throw new Error(`Download failed: ${response.status}`);

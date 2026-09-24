@@ -134,11 +134,12 @@ export default function ConversationContext({
     phoneNumber,
     backendId,
   } = useCurrentChat();
-  const { backendNames, sessionId } = useAuth();
+  const { backendNames, isAuthenticated } = useAuth();
   const { locale, t } = useTranslations();
   const { odooBaseUrl } = useAppConfig();
   const isCustomerConversation = Boolean(partnerId && !group);
-  const analyticsEnabled = !!chatId && !!sessionId && isCustomerConversation;
+  const analyticsEnabled =
+    !!chatId && isAuthenticated && isCustomerConversation;
   const analyticsQuery = useQuery({
     queryKey: ["customer-context", chatId, partnerId],
     enabled: analyticsEnabled,
@@ -148,7 +149,7 @@ export default function ConversationContext({
     queryFn: ({ signal }) =>
       apiFetch<{ analytics?: unknown }>(
         `/api/customer-context?threadId=${encodeURIComponent(chatId as string)}`,
-        { sessionId, signal }
+        { signal }
       ).then((data) =>
         isCustomerAnalytics(data.analytics) ? data.analytics : null
       ),

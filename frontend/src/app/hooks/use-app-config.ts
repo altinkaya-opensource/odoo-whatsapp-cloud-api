@@ -9,15 +9,14 @@ export type AppConfig = {
 
 /** Deployment settings the browser needs, fetched once per page load. */
 export const useAppConfig = (): AppConfig => {
-  const { sessionId } = useAuth();
+  const { isAuthenticated } = useAuth();
   const { data } = useQuery({
     queryKey: ["config"],
-    enabled: !!sessionId,
+    enabled: isAuthenticated,
     staleTime: Infinity,
     meta: { quiet: true },
     queryFn: async ({ signal }): Promise<AppConfig> => {
       const body = await apiFetch<Partial<AppConfig>>("/api/config", {
-        sessionId,
         signal,
       });
       return {

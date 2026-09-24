@@ -22,7 +22,8 @@ const FINAL_STATUSES = new Set([400, 401, 403, 404]);
  */
 export default function QueryProvider({ children }: PropsWithChildren) {
   const { reportApiError, reportConnectionRestored } = useConnection();
-  const { sessionId } = useAuth();
+  const { user } = useAuth();
+  const userId = user?.uid ?? null;
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -50,7 +51,7 @@ export default function QueryProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     return () => queryClient.clear();
-  }, [queryClient, sessionId]);
+  }, [queryClient, userId]);
 
   return (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>

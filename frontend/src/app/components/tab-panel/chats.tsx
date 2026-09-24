@@ -17,7 +17,6 @@ import MessageStatusIcon from "../message-status-icon";
 import { useMobileNavigation } from "@/app/context/mobile-navigation-provider";
 import { useResponsive } from "@/app/hooks/use-responsive";
 import BackendSelector from "../backend-selector";
-import { useAuth } from "@/app/hooks/use-auth";
 
 export default function Chats({ selectedTab }: { selectedTab: string }) {
   const {
@@ -43,7 +42,6 @@ export default function Chats({ selectedTab }: { selectedTab: string }) {
   const { t, locale } = useTranslations();
   const { showActiveChat } = useMobileNavigation();
   const { isMobile } = useResponsive();
-  const { sessionId } = useAuth();
   const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
@@ -110,8 +108,6 @@ export default function Chats({ selectedTab }: { selectedTab: string }) {
   };
 
   const handleMarkAllRead = async () => {
-    if (!sessionId) return;
-
     const unreadChats = complete.filter((chat) => !chat.read);
     if (unreadChats.length === 0) return;
 
@@ -124,13 +120,7 @@ export default function Chats({ selectedTab }: { selectedTab: string }) {
 
     // Single API call to mark all as read
     try {
-      await fetch("/api/threads/mark-all-read", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-session-id": sessionId,
-        },
-      });
+      await fetch("/api/threads/mark-all-read", { method: "POST" });
     } catch (err) {
       console.error("Failed to mark all chats as read:", err);
     }

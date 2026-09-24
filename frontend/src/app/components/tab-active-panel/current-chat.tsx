@@ -17,7 +17,6 @@ import TemplatePicker from "../message/template-picker";
 import DragDropZone from "../message/drag-drop-zone";
 import SuggestionChips from "../message/suggestion-chips";
 import { useTranslations } from "@/app/context/translation-provider";
-import { useAuth } from "@/app/hooks/use-auth";
 import { useAppConfig } from "@/app/hooks/use-app-config";
 import {
   ChatCircleDotsIcon,
@@ -73,7 +72,6 @@ export default function CurrentChat() {
   >(null);
   const { t, locale } = useTranslations();
   const { suggestionsEnabled } = useAppConfig();
-  const { sessionId } = useAuth();
 
   useEffect(() => {
     // Abort any ongoing suggestion requests when switching threads
@@ -239,10 +237,7 @@ export default function CurrentChat() {
     try {
       const response = await fetch("/api/ai/improve-text", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-session-id": sessionId ?? "",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           threadId: Number(chatId),
           currentText: messageText.trim(),
@@ -321,10 +316,7 @@ export default function CurrentChat() {
     try {
       const response = await fetch("/api/ai/translate", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-session-id": sessionId ?? "",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           threadId: Number(chatId),
           currentText: originalText,
@@ -410,10 +402,7 @@ export default function CurrentChat() {
       try {
         const response = await fetch("/api/ai/translate-message", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-session-id": sessionId ?? "",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             text: message.message,
             targetLanguage: locale,
@@ -439,7 +428,7 @@ export default function CurrentChat() {
         setTranslatingMessageId(null);
       }
     },
-    [locale, sessionId]
+    [locale]
   );
 
   // Suggestions for the customer's latest message, cached on the server
@@ -466,10 +455,7 @@ export default function CurrentChat() {
       try {
         const response = await fetch("/api/ai/rag-suggestions", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-session-id": sessionId ?? "",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ threadId: Number(chatId), forceRefresh }),
           signal: abortController.signal,
         });
@@ -491,7 +477,7 @@ export default function CurrentChat() {
         }
       }
     },
-    [messages, chatId, sessionId, suggestionsEnabled]
+    [messages, chatId, suggestionsEnabled]
   );
 
   // Handle suggestion selection - populate textarea

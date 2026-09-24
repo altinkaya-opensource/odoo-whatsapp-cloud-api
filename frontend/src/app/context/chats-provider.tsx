@@ -186,13 +186,13 @@ export default function ChatsProvider({
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState<string>("");
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const { sessionId } = useAuth();
+  const { isAuthenticated } = useAuth();
   const queryClient = useQueryClient();
   const search = debouncedSearchQuery.trim();
 
   const avatarUrl = useCallback(
-    (partnerId: number) => buildPartnerAvatarUrl("", partnerId, sessionId),
-    [sessionId]
+    (partnerId: number) => buildPartnerAvatarUrl(partnerId),
+    []
   );
 
   const threadsKey: ThreadsKey = [
@@ -205,7 +205,7 @@ export default function ChatsProvider({
   ];
   const threadsQuery = useInfiniteQuery({
     queryKey: threadsKey,
-    enabled: !!sessionId,
+    enabled: isAuthenticated,
     initialPageParam: 0,
     placeholderData: keepPreviousData,
     refetchInterval: POLL_INTERVAL_MS,
@@ -230,7 +230,7 @@ export default function ChatsProvider({
       }
       const { threads = [] } = await apiFetch<{
         threads?: OdooThreadRecord[];
-      }>(`/api/threads?${params}`, { sessionId, signal });
+      }>(`/api/threads?${params}`, { signal });
       return {
         chats: threads.map((record) => toChat(record, avatarUrl)),
         hasMore: threads.length >= pageSize,
@@ -279,7 +279,7 @@ export default function ChatsProvider({
 
   const messageSearchQuery = useInfiniteQuery({
     queryKey: ["message-search", search],
-    enabled: !!sessionId && search.length > 0,
+    enabled: isAuthenticated && search.length > 0,
     initialPageParam: 0,
     queryFn: async ({ pageParam, signal }) => {
       const params = new URLSearchParams({
@@ -289,7 +289,7 @@ export default function ChatsProvider({
       });
       const { messages = [] } = await apiFetch<{
         messages?: Record<string, unknown>[];
-      }>(`/api/messages/search?${params}`, { sessionId, signal });
+      }>(`/api/messages/search?${params}`, { signal });
       return {
         results: messages.map(toSearchResult),
         hasMore: messages.length >= MESSAGE_SEARCH_PAGE_SIZE,
@@ -309,11 +309,10 @@ export default function ChatsProvider({
   // Unread total across every thread, not just the loaded pages
   const unreadQuery = useQuery({
     queryKey: ["unread-count"],
-    enabled: !!sessionId,
+    enabled: isAuthenticated,
     refetchInterval: POLL_INTERVAL_MS,
     queryFn: ({ signal }) =>
       apiFetch<{ unreadCount: number }>("/api/threads/unread-count", {
-        sessionId,
         signal,
       }).then((data) => data.unreadCount),
   });
@@ -325,14 +324,14 @@ export default function ChatsProvider({
 
   // The local sum only tells that something changed; Odoo has the number
   useEffect(() => {
-    if (!sessionId) {
+    if (!isAuthenticated) {
       return;
     }
     const timeout = setTimeout(() => {
       queryClient.invalidateQueries({ queryKey: ["unread-count"] });
     }, 400);
     return () => clearTimeout(timeout);
-  }, [sessionId, loadedUnreadCount, queryClient]);
+  }, [isAuthenticated, loadedUnreadCount, queryClient]);
 
   // Mirror the unread total onto the app icon (installed PWA / dock).
   useEffect(() => {

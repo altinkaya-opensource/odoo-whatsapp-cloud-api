@@ -414,6 +414,22 @@ class WhatsAppBackend(models.Model):
             "context": {"default_waba_id": self.waba_id},
         }
 
+    def _get_frontend_login_url(self, thread=None):
+        """Link that signs the current user in to the frontend, once.
+
+        The link carries a one-time code, never the user's session: the
+        frontend trades the code for a session of its own.
+        """
+        self.ensure_one()
+        base_url = (self.frontend_webhook_url or "").replace(
+            "/api/webhooks/whatsapp", ""
+        )
+        code = self.env["whatsapp.frontend.sso"]._issue_code(self.env.user)
+        url = f"{base_url.rstrip('/')}/api/auth/sso-login?code={code}"
+        if thread:
+            url += f"&thread_id={thread.id}"
+        return url
+
     # ---------------------------------------------------------------------
     # Thread helpers
     # ---------------------------------------------------------------------

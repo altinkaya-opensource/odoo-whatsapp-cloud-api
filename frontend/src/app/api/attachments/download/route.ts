@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   getOdooBaseUrl,
-  resolveSession,
+  requireSession,
   UNTRUSTED_FILE_HEADERS,
 } from "@/app/lib/odoo/server";
 import { ODOO_TIMEOUT_MS } from "@/app/lib/odoo/jsonrpc";
@@ -20,11 +20,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // <img> and download links cannot set headers, so the session may come in
-  // the query string
-  const auth = await resolveSession(
-    request.headers.get("x-session-id") || url.searchParams.get("session_id")
-  );
+  const auth = await requireSession(request);
   if ("response" in auth) {
     return auth.response;
   }

@@ -1,67 +1,35 @@
 import { NextResponse } from "next/server";
-import { OdooClient } from "@/app/lib/odoo/jsonrpc";
+import {
+  createOdooClient,
+  isSessionRejected,
+  isValidSessionId,
+} from "@/app/lib/odoo/server";
 import { sessionCache } from "@/app/lib/session-cache";
+import { clearSessionCookie, readSessionId } from "@/app/lib/session-cookie";
 
-const REQUIRED_ENV_VARS = [
-  "ODOO_JSONRPC_HOST",
-  "ODOO_JSONRPC_DATABASE",
-] as const;
-
-const ensureEnv = () => {
-  const missing = REQUIRED_ENV_VARS.filter((name) => !process.env[name]);
-  if (missing.length > 0) {
-    throw new Error(
-      `Missing required environment variables: ${missing.join(", ")}`
-    );
-  }
+const unauthorized = (message: string) => {
+  const response = NextResponse.json({ error: message }, { status: 401 });
+  clearSessionCookie(response);
+  return response;
 };
 
+/**
+ * Who the session cookie belongs to, with their WhatsApp backends.
+ *
+ * 401 (and the cookie cleared) only when Odoo rejects the session; when Odoo
+ * cannot be reached the user stays signed in and retries.
+ */
 export async function POST(request: Request) {
-  try {
-    ensureEnv();
-  } catch (error) {
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Server configuration error",
-      },
-      { status: 500 }
-    );
+  const sessionId = readSessionId(request);
+  if (!sessionId || !isValidSessionId(sessionId)) {
+    return unauthorized("Not signed in");
   }
-
-  const { sessionId } = await request.json();
-
-  if (typeof sessionId !== "string" || sessionId.trim().length === 0) {
-    return NextResponse.json(
-      { error: "Session ID is required" },
-      { status: 400 }
-    );
-  }
-
-  const protocolEnv: "http" | "https" =
-    process.env.ODOO_JSONRPC_PROTOCOL === "https" ? "https" : "http";
-  const portEnv = process.env.ODOO_JSONRPC_PORT;
-  const port = portEnv ? Number(portEnv) : undefined;
-
-  if (typeof port !== "undefined" && Number.isNaN(port)) {
-    return NextResponse.json(
-      { error: "ODOO_JSONRPC_PORT must be a valid number" },
-      { status: 500 }
-    );
-  }
-
-  const odooClient = new OdooClient({
-    host: process.env.ODOO_JSONRPC_HOST as string,
-    port,
-    protocol: protocolEnv,
-  });
 
   try {
-    // Create a session client with the provided session ID (initially without context)
-    const tempSession = odooClient.createSession(sessionId.trim());
+    const odooClient = createOdooClient();
 
     // Validate the session by calling ir.http's session_info method
-    const sessionInfo = await tempSession.call<{
+    const sessionInfo = await odooClient.createSession(sessionId).call<{
       uid?: number;
       username?: string;
       name?: string;
@@ -75,15 +43,12 @@ export async function POST(request: Request) {
     }>("ir.http", "session_info", [[]], {}, false);
 
     if (!sessionInfo || !sessionInfo.uid) {
-      return NextResponse.json(
-        { error: "Invalid or expired session ID" },
-        { status: 401 }
-      );
+      return unauthorized("Invalid or expired session");
     }
 
     // Create a new session with the proper user_context from session_info
     const session = odooClient.createSession(
-      sessionId.trim(),
+      sessionId,
       sessionInfo.user_context || {}
     );
 
@@ -101,7 +66,7 @@ export async function POST(request: Request) {
 
       // Store backend_ids in server-side cache for secure SSE access control
       if (backend && Array.isArray(backend.backend_ids)) {
-        sessionCache.set(sessionId.trim(), backend.backend_ids);
+        sessionCache.set(sessionId, backend.backend_ids);
       } else {
         console.warn(
           "[ValidateSession] No backend_ids returned from initialize_web"
@@ -120,20 +85,13 @@ export async function POST(request: Request) {
       backend,
     });
   } catch (error) {
-    const err = error as Error & {
-      code?: number;
-      data?: { name?: string; message?: string };
-    };
-
-    // Odoo answers an expired session with JSON-RPC error 100
-    const sessionRejected =
-      err.code === 100 ||
-      err.data?.name === "odoo.exceptions.AccessDenied" ||
-      err.data?.name === "odoo.http.SessionExpiredException";
-    const status = sessionRejected ? 401 : 500;
-    const message =
-      err.message || err.data?.message || "Unable to validate session ID";
-
-    return NextResponse.json({ error: message }, { status });
+    if (isSessionRejected(error)) {
+      return unauthorized("Invalid or expired session");
+    }
+    console.error("[ValidateSession] Unable to validate the session:", error);
+    return NextResponse.json(
+      { error: "Unable to validate the session" },
+      { status: 500 }
+    );
   }
 }

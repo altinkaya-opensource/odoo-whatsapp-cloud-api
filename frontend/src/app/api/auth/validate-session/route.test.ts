@@ -14,11 +14,11 @@ vi.mock("@/app/lib/odoo/jsonrpc", () => ({ OdooClient: mocks.OdooClient }));
 
 import { POST } from "./route";
 
-const validate = () =>
+const validate = (cookie = `whatsapp_session=${"a".repeat(40)}`) =>
   POST(
     new Request("http://localhost/api/auth/validate-session", {
       method: "POST",
-      body: JSON.stringify({ sessionId: "s".repeat(40) }),
+      headers: { cookie },
     })
   );
 
@@ -38,11 +38,20 @@ describe("POST /api/auth/validate-session", () => {
     vi.restoreAllMocks();
   });
 
-  it("rejects an expired session with 401", async () => {
+  it("rejects an expired session with 401 and drops the cookie", async () => {
     mocks.sessionClient.call.mockRejectedValue(
       odooError(100, "odoo.http.SessionExpiredException")
     );
-    expect((await validate()).status).toBe(401);
+    const response = await validate();
+    expect(response.status).toBe(401);
+    expect(response.headers.get("set-cookie")).toMatch(
+      /^whatsapp_session=;.*Max-Age=0/
+    );
+  });
+
+  it("answers 401 without a session cookie, without asking Odoo", async () => {
+    expect((await validate("")).status).toBe(401);
+    expect(mocks.sessionClient.call).not.toHaveBeenCalled();
   });
 
   it("rejects a session without a user with 401", async () => {

@@ -126,8 +126,7 @@ class OdooBusConnection {
       if (event.code === SESSION_EXPIRED_CODE) {
         console.warn("[OdooBus] Session expired, closing the bus connection");
         sessionCache.delete(this.sessionId);
-        this.emit({ type: "session-expired" });
-        this.dispose();
+        this.end();
         return;
       }
       const delay = Math.min(1000 * 2 ** this.retries, MAX_RETRY_DELAY_MS);
@@ -157,6 +156,12 @@ class OdooBusConnection {
     }
   }
 
+  /** The session is over: tell the tabs and close. */
+  end() {
+    this.emit({ type: "session-expired" });
+    this.dispose();
+  }
+
   private dispose() {
     this.closed = true;
     this.socket?.close();
@@ -178,4 +183,9 @@ export const getBusConnection = (sessionId: string): OdooBusConnection => {
     connections.set(sessionId, connection);
   }
   return connection;
+};
+
+/** Close the bus connection of a session that signed out, if it has one. */
+export const closeBusConnection = (sessionId: string) => {
+  connections.get(sessionId)?.end();
 };

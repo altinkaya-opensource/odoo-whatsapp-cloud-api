@@ -131,7 +131,7 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
     markChatAsRead,
   } = useChats();
   const { contacts } = useContacts();
-  const { sessionId, backendUserId } = useAuth();
+  const { isAuthenticated, backendUserId } = useAuth();
   const { reportApiError, reportConnectionRestored } = useConnection();
   const queryClient = useQueryClient();
   const { chatId, targetMessageId } = currentChat;
@@ -140,7 +140,7 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
   // refreshes it in the background.
   const messagesQuery = useInfiniteQuery({
     queryKey: messagesKey(chatId ?? "", targetMessageId),
-    enabled: !!sessionId && !!chatId,
+    enabled: isAuthenticated && !!chatId,
     initialPageParam: null as number | null,
     refetchInterval: POLL_INTERVAL_MS,
     queryFn: async ({ pageParam, signal }): Promise<MessagesPage> => {
@@ -157,7 +157,7 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
       }
       const { messages = [] } = await apiFetch<{
         messages?: OdooMessageRecord[];
-      }>(`/api/messages?${params}`, { sessionId, signal });
+      }>(`/api/messages?${params}`, { signal });
       return {
         messages: mergeMessages(
           [],
@@ -188,7 +188,6 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
     (threadId: string) => {
       markChatAsRead(threadId);
       apiFetch("/api/threads/mark-read", {
-        sessionId,
         method: "POST",
         body: { threadId },
       })
@@ -199,7 +198,7 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
           // Not critical: the thread is marked read on the next open
         });
     },
-    [sessionId, markChatAsRead, queryClient]
+    [markChatAsRead, queryClient]
   );
 
   // ChatsProvider puts realtime messages in the cache; a customer message
@@ -256,11 +255,11 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
         isSending: false,
         replyTo: null,
       }));
-      if (chat.chatId && sessionId) {
+      if (chat.chatId && isAuthenticated) {
         markThreadRead(chat.chatId);
       }
     },
-    [sessionId, markThreadRead]
+    [isAuthenticated, markThreadRead]
   );
 
   const {
@@ -279,7 +278,7 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
    * number and backend from the thread itself.
    */
   const getRecipient = useCallback(() => {
-    if (!sessionId) {
+    if (!isAuthenticated) {
       throw new Error("You are not authenticated");
     }
     const threadId = header.chatId;
@@ -291,7 +290,7 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
       throw new Error("Invalid conversation identifier");
     }
     return { threadId, numericThreadId };
-  }, [sessionId, header.chatId]);
+  }, [isAuthenticated, header.chatId]);
 
   const setSending = useCallback((threadId: string, isSending: boolean) => {
     setCurrentChat((prev) =>
@@ -355,7 +354,6 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
         const { result = {} } = await apiFetch<{ result?: SendResult }>(
           "/api/messages",
           {
-            sessionId,
             method: "POST",
             body: {
               threadId: numericThreadId,
@@ -392,7 +390,6 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
       currentChat.replyTo,
       backendUserId,
       queryClient,
-      sessionId,
       confirmSent,
       setSending,
       updateThreadPreview,
@@ -432,7 +429,7 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
         formData.append("file", file);
         const { attachmentId } = await apiFetch<{ attachmentId?: number }>(
           "/api/attachments/upload",
-          { sessionId, method: "POST", body: formData }
+          { method: "POST", body: formData }
         );
         if (!attachmentId) {
           throw new Error("No attachment ID returned from upload");
@@ -447,7 +444,6 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
         await apiFetch<{ result?: SendResult }>(
           "/api/messages/send-attachment",
           {
-            sessionId,
             method: "POST",
             body: {
               threadId: numericThreadId,
@@ -489,7 +485,6 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
       getRecipient,
       backendUserId,
       queryClient,
-      sessionId,
       setSending,
       updateThreadPreview,
       reportApiError,
@@ -505,7 +500,6 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
       const { threadId, numericThreadId } = getRecipient();
       try {
         await apiFetch("/api/messages/send-reaction", {
-          sessionId,
           method: "POST",
           body: {
             threadId: numericThreadId,
@@ -522,13 +516,7 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
         throw error;
       }
     },
-    [
-      getRecipient,
-      sessionId,
-      queryClient,
-      reportApiError,
-      reportConnectionRestored,
-    ]
+    [getRecipient, queryClient, reportApiError, reportConnectionRestored]
   );
 
   const startReply = useCallback((message: Message) => {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { OdooClient, type OdooSessionClient } from "./jsonrpc";
 import { sessionCache } from "../session-cache";
+import { readSessionId } from "../session-cookie";
 
 /**
  * Server-side Odoo helpers shared by the API routes.
@@ -157,9 +158,9 @@ export const resolveSession = async (
   }
 };
 
-/** Resolve the caller's Odoo session, or return the response to send. */
+/** Resolve the caller's Odoo session from its cookie, or the response to send. */
 export const requireSession = (request: Request): Promise<AuthResult> =>
-  resolveSession(request.headers.get("x-session-id"));
+  resolveSession(readSessionId(request));
 
 /**
  * Like requireSession, for features only WhatsApp agents may use (the AI

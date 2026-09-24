@@ -23,7 +23,7 @@ const suggest = (body: Record<string, unknown>) =>
   POST(
     new NextRequest("http://localhost/api/ai/rag-suggestions", {
       method: "POST",
-      headers: { "x-session-id": SESSION_ID },
+      headers: { cookie: `whatsapp_session=${SESSION_ID}` },
       body: JSON.stringify(body),
     })
   );

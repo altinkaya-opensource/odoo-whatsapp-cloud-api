@@ -32,7 +32,7 @@ const requestFor = (threadId: string, withSession = true) =>
   new NextRequest(
     `http://localhost/api/customer-context?threadId=${threadId}`,
     {
-      headers: withSession ? { "x-session-id": SESSION_ID } : {},
+      headers: withSession ? { cookie: `whatsapp_session=${SESSION_ID}` } : {},
     }
   );
 

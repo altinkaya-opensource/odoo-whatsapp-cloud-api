@@ -85,8 +85,8 @@ ODOO_PUBLIC_URL=
 
 ### API Route Pattern
 
-`requireSession(request)` reads the `x-session-id` header, checks the session
-with Odoo (cached for a few minutes with the user's WhatsApp backends) and
+`requireSession(request)` reads the session cookie, checks the session with
+Odoo (cached for a few minutes with the user's WhatsApp backends) and
 returns a session-scoped client, or the 401 to send. Odoo's record rules then
 decide what comes back. `odooErrorResponse` turns a failed call into 401 for
 an expired session, Odoo's own message for a `UserError` or `AccessError`, and
@@ -223,12 +223,17 @@ directly.
 
 ## Security Notes
 
-- The session id travels in the `x-session-id` header, and in the query string
-  for SSE and avatars, because `EventSource` and `<img>` cannot set headers.
-- The browser keeps the session id in localStorage, so treat XSS as an account
-  takeover, not a defacement.
+- The Odoo session lives in the `whatsapp_session` cookie: HttpOnly,
+  SameSite=Strict, read only by the Next server (`lib/session-cookie.ts`).
+  It never goes in a URL, a header set by the page or localStorage; the
+  browser keeps only who is signed in, to draw the app before the server
+  answers. `fetch`, `EventSource` and `<img>` send the cookie on their own.
+- Odoo's "Open WhatsApp" links carry a one-time code, valid for a minute.
+  `/api/auth/sso-login` trades it server to server for a new Odoo session.
+- Signing out destroys the Odoo session, not only the cookie.
 - Uploads and downloads proxy through Odoo, which checks that the attachment
-  belongs to a WhatsApp message the user may read.
+  belongs to a WhatsApp message the user may read. Proxied files carry
+  `default-src 'none'` and `nosniff`.
 
 ## Code Style
 

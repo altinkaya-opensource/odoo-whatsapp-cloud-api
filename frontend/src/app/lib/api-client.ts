@@ -1,8 +1,9 @@
 /**
  * Browser-side calls to the app's API routes.
  *
- * Every call carries the Odoo session and fails with an ApiError that keeps
- * the HTTP status, which the connection banner and the retry policy read.
+ * The session travels in its HttpOnly cookie. A call fails with an ApiError
+ * that keeps the HTTP status, which the connection banner and the retry
+ * policy read.
  */
 export class ApiError extends Error {
   status: number;
@@ -15,7 +16,6 @@ export class ApiError extends Error {
 }
 
 type ApiFetchOptions = {
-  sessionId: string | null;
   method?: "GET" | "POST";
   /** A plain object is sent as JSON, FormData as is */
   body?: Record<string, unknown> | FormData;
@@ -24,12 +24,9 @@ type ApiFetchOptions = {
 
 export const apiFetch = async <T>(
   path: string,
-  { sessionId, method = "GET", body, signal }: ApiFetchOptions
+  { method = "GET", body, signal }: ApiFetchOptions = {}
 ): Promise<T> => {
-  if (!sessionId) {
-    throw new ApiError(401, "You are not authenticated");
-  }
-  const headers: Record<string, string> = { "x-session-id": sessionId };
+  const headers: Record<string, string> = {};
   let payload: BodyInit | undefined;
   if (body instanceof FormData) {
     payload = body;

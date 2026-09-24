@@ -59,7 +59,7 @@ const REVALIDATE_AFTER_RETRIES = 3;
  * longer replay the gap it says "resync" and the cached data is reloaded.
  */
 export default function RealtimeProvider({ children }: PropsWithChildren) {
-  const { sessionId, loginWithSessionId } = useAuth();
+  const { isAuthenticated, revalidateSession } = useAuth();
   const { isBlocked } = useTabSync();
   const { reportApiError, reportConnectionRestored } = useConnection();
   const queryClient = useQueryClient();
@@ -76,7 +76,7 @@ export default function RealtimeProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     // A tab blocked by the single-active-tab rule stays offline
-    if (!sessionId || isBlocked) {
+    if (!isAuthenticated || isBlocked) {
       return;
     }
     let source: EventSource | null = null;
@@ -104,14 +104,14 @@ export default function RealtimeProvider({ children }: PropsWithChildren) {
           break;
         case "session-expired":
           // Signs out only if Odoo rejects the session
-          loginWithSessionId(sessionId).catch(() => undefined);
+          revalidateSession().catch(() => undefined);
           break;
       }
     };
 
     const connect = () => {
+      // The session cookie goes with the request
       const url = new URL("/api/events", window.location.origin);
-      url.searchParams.set("sessionId", sessionId);
       if (lastEventIdRef.current) {
         url.searchParams.set("lastEventId", lastEventIdRef.current);
       }
@@ -132,8 +132,8 @@ export default function RealtimeProvider({ children }: PropsWithChildren) {
         }
       };
       source.onerror = (error) => {
-        // Reconnect here rather than natively: the URL carries the session
-        // and the last event id, and a rejected session must stop retrying.
+        // Reconnect here rather than natively: the URL carries the last
+        // event id, and a rejected session must stop retrying.
         source?.close();
         setIsConnected(false);
         reportApiError(error);
@@ -142,7 +142,7 @@ export default function RealtimeProvider({ children }: PropsWithChildren) {
         }
         retries += 1;
         if (retries === REVALIDATE_AFTER_RETRIES) {
-          loginWithSessionId(sessionId).catch(() => undefined);
+          revalidateSession().catch(() => undefined);
         }
         const delay =
           Math.min(RETRY_MS * 2 ** (retries - 1), MAX_RETRY_MS) *
@@ -159,10 +159,10 @@ export default function RealtimeProvider({ children }: PropsWithChildren) {
       setIsConnected(false);
     };
   }, [
-    sessionId,
+    isAuthenticated,
     isBlocked,
     queryClient,
-    loginWithSessionId,
+    revalidateSession,
     reportApiError,
     reportConnectionRestored,
   ]);

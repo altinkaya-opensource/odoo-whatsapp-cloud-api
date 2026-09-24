@@ -6,6 +6,12 @@ import { GET as avatar } from "../../avatar/[partnerId]/route";
 
 const SESSION_ID = "a".repeat(40);
 
+/** A request from a browser signed in with this session. */
+const signedIn = (url: string, sessionId = SESSION_ID) =>
+  new NextRequest(url, {
+    headers: { cookie: `whatsapp_session=${sessionId}` },
+  });
+
 const odooAnswers = (body: string, contentType: string) =>
   vi
     .spyOn(globalThis, "fetch")
@@ -30,10 +36,10 @@ describe("files proxied from Odoo", () => {
   it("serves a customer's file so it cannot run scripts", async () => {
     const fetchMock = odooAnswers("<svg onload=alert(1)>", "image/svg+xml");
     const response = await download(
-      new NextRequest(
+      signedIn(
         `http://localhost/api/attachments/download?url=${encodeURIComponent(
           "https://evil.test/whatsapp/attachment/download/42"
-        )}&session_id=${SESSION_ID}`
+        )}`
       )
     );
 
@@ -61,8 +67,9 @@ describe("files proxied from Odoo", () => {
       })
     );
     const response = await download(
-      new NextRequest(
-        `http://localhost/api/attachments/download?url=/whatsapp/attachment/download/42&session_id=${"b".repeat(40)}`
+      signedIn(
+        "http://localhost/api/attachments/download?url=/whatsapp/attachment/download/42",
+        "b".repeat(40)
       )
     );
     expect(response.status).toBe(401);
@@ -75,9 +82,7 @@ describe("files proxied from Odoo", () => {
     const params = (partnerId: string) => ({
       params: Promise.resolve({ partnerId }),
     });
-    const request = new NextRequest(
-      `http://localhost/api/avatar/7?session_id=${SESSION_ID}`
-    );
+    const request = signedIn("http://localhost/api/avatar/7");
 
     const response = await avatar(request, params("7"));
     expect(response.headers.get("Content-Type")).toBe("image/png");
@@ -87,10 +92,9 @@ describe("files proxied from Odoo", () => {
 
   it("does not pass a login page off as an avatar", async () => {
     odooAnswers("<html>login</html>", "text/html");
-    const response = await avatar(
-      new NextRequest(`http://localhost/api/avatar/7?session_id=${SESSION_ID}`),
-      { params: Promise.resolve({ partnerId: "7" }) }
-    );
+    const response = await avatar(signedIn("http://localhost/api/avatar/7"), {
+      params: Promise.resolve({ partnerId: "7" }),
+    });
     expect(response.status).toBe(404);
   });
 });
