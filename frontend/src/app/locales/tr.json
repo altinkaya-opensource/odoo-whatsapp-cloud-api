@@ -120,6 +120,25 @@
     "send": "Gönder",
     "fileSizeError": "Dosya {{size}} değerinden küçük olmalı"
   },
+  "gallery": {
+    "title": "Medya, bağlantılar ve belgeler",
+    "close": "Medya, bağlantılar ve belgeleri kapat",
+    "tabs": {
+      "media": "Medya",
+      "files": "Belgeler",
+      "links": "Bağlantılar"
+    },
+    "empty": {
+      "media": "Bu sohbette henüz fotoğraf veya video yok.",
+      "files": "Bu sohbette henüz belge yok.",
+      "links": "Bu sohbette henüz bağlantı yok."
+    },
+    "loadError": "Sohbetin medyası yüklenemedi.",
+    "retry": "Tekrar dene",
+    "showInChat": "Sohbette göster",
+    "previous": "Daha eski",
+    "next": "Daha yeni"
+  },
   "template": {
     "title": "Şablon Mesaj Gönder",
     "send": "Gönder",

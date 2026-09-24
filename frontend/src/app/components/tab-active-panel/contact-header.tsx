@@ -1,12 +1,16 @@
 import { useCurrentChat } from "@/app/hooks/use-current-chat";
 import Profile from "../profile";
-import { ArrowLeftIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon, ImagesIcon } from "@phosphor-icons/react";
 import { useTranslations } from "@/app/context/translation-provider";
 import { useMobileNavigation } from "@/app/context/mobile-navigation-provider";
 import { useResponsive } from "@/app/hooks/use-responsive";
 import { useAuth } from "@/app/hooks/use-auth";
 
-export default function ContactHeader() {
+type ContactHeaderProps = {
+  onOpenMedia: () => void;
+};
+
+export default function ContactHeader({ onOpenMedia }: ContactHeaderProps) {
   const {
     threadName,
     phoneNumber,
@@ -64,6 +68,15 @@ export default function ContactHeader() {
           </div>
         </div>
       </div>
+      <button
+        type="button"
+        onClick={onOpenMedia}
+        className="icon-action ml-auto size-10 shrink-0"
+        aria-label={t("gallery.title")}
+        title={t("gallery.title")}
+      >
+        <ImagesIcon className="size-5" weight="bold" />
+      </button>
     </header>
   );
 }

@@ -120,6 +120,25 @@
     "send": "Send",
     "fileSizeError": "File must be smaller than {{size}}"
   },
+  "gallery": {
+    "title": "Media, links and docs",
+    "close": "Close media, links and docs",
+    "tabs": {
+      "media": "Media",
+      "files": "Docs",
+      "links": "Links"
+    },
+    "empty": {
+      "media": "No photos or videos in this chat yet.",
+      "files": "No documents in this chat yet.",
+      "links": "No links in this chat yet."
+    },
+    "loadError": "The chat's media could not be loaded.",
+    "retry": "Try again",
+    "showInChat": "Show in chat",
+    "previous": "Older",
+    "next": "Newer"
+  },
   "template": {
     "title": "Send Template Message",
     "send": "Send",
