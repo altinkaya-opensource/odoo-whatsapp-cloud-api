@@ -1,6 +1,6 @@
 import { Message } from "@/app/context/chats-provider";
+import type { CurrentChatContactsGroup } from "@/app/context/current-chat-provider";
 import MessageStatusIcon from "../message-status-icon";
-import { useCurrentChat } from "@/app/hooks/use-current-chat";
 import Profile from "../profile";
 import { useContacts } from "@/app/hooks/use-contacts";
 import { formatTime } from "@/app/utils";
@@ -26,17 +26,21 @@ const getContactColor = (value: string): string => {
 
 type ChatMessageProps = {
   message: Message;
+  /** Who the other side of the chat is, for quotes of their messages */
+  customerName: string;
+  group: CurrentChatContactsGroup | null;
   translatedText?: string;
   isTranslated?: boolean;
 };
 
 export default function ChatMessage({
   message,
+  customerName,
+  group,
   translatedText,
   isTranslated = false,
 }: ChatMessageProps) {
   const { getContact } = useContacts();
-  const { group, partnerName, threadName, phoneNumber } = useCurrentChat();
   const { backendUsersById, backendUserId } = useAuth();
   const { t, locale } = useTranslations();
 
@@ -66,12 +70,7 @@ export default function ChatMessage({
       return null;
     }
     // Contacts are the backend's agents; the other side is the customer
-    const name = message.replyTo.senderIsUser
-      ? t("common.you")
-      : (partnerName ??
-        threadName ??
-        phoneNumber ??
-        t("context.unknownContact"));
+    const name = message.replyTo.senderIsUser ? t("common.you") : customerName;
     return (
       <div className="mb-1 w-full max-w-xs rounded-xl border-l-[3px] border-[rgb(var(--accent-primary))] bg-[rgb(var(--bg-reply-preview)/var(--bg-reply-preview-opacity))] px-2.5 py-2 text-xs text-[rgb(var(--text-secondary))]">
         <p className="font-semibold truncate">{name}</p>

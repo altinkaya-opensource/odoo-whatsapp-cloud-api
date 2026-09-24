@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { ArrowsClockwise } from "@phosphor-icons/react";
 import { useTranslations } from "@/app/context/translation-provider";
 import FormattedText from "./formatted-text";
@@ -10,6 +11,8 @@ type SuggestionChipsProps = {
   disabled?: boolean;
 };
 
+const SKELETON_DELAY_MS = 300;
+
 export default function SuggestionChips({
   suggestions,
   isLoading,
@@ -21,8 +24,22 @@ export default function SuggestionChips({
   const filteredSuggestions = suggestions.filter(
     (suggestion) => suggestion !== "NO_RESPONSE"
   );
+  // Cached suggestions come back fast: show the placeholder only for a real
+  // wait, so the composer does not grow and shrink on every chat switch.
+  const [isSlow, setIsSlow] = useState(false);
+  useEffect(() => {
+    if (!isLoading) {
+      return;
+    }
+    const timer = setTimeout(() => setIsSlow(true), SKELETON_DELAY_MS);
+    return () => {
+      clearTimeout(timer);
+      setIsSlow(false);
+    };
+  }, [isLoading]);
+  const showLoading = isLoading && isSlow;
 
-  if (!isLoading && filteredSuggestions.length === 0) {
+  if (!showLoading && filteredSuggestions.length === 0) {
     return null;
   }
 
@@ -47,7 +64,7 @@ export default function SuggestionChips({
         </button>
       </header>
 
-      {isLoading ? (
+      {showLoading ? (
         <div className="space-y-2" aria-busy="true">
           <div className="h-9 w-full animate-pulse rounded-lg bg-[rgb(var(--bg-tertiary))]" />
           <span className="sr-only">{t("chatInput.suggestionsLoading")}</span>

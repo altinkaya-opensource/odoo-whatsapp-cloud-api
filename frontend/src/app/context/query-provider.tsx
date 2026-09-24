@@ -27,7 +27,11 @@ export default function QueryProvider({ children }: PropsWithChildren) {
     () =>
       new QueryClient({
         queryCache: new QueryCache({
-          onError: reportApiError,
+          onError: (error, query) => {
+            if (!query.meta?.quiet) {
+              reportApiError(error);
+            }
+          },
           onSuccess: reportConnectionRestored,
         }),
         mutationCache: new MutationCache({ onError: reportApiError }),

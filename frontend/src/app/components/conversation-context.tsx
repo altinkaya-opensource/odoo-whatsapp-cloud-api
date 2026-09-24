@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   ArrowSquareOut,
   BuildingsIcon,
@@ -16,6 +17,8 @@ import {
   ShoppingBagIcon,
 } from "@phosphor-icons/react";
 import { useAuth } from "@/app/hooks/use-auth";
+import { apiFetch } from "@/app/lib/api-client";
+import { useAppConfig } from "@/app/hooks/use-app-config";
 import { useCurrentChat } from "@/app/hooks/use-current-chat";
 import { useTranslations } from "@/app/context/translation-provider";
 import Profile from "./profile";
@@ -46,40 +49,8 @@ type CustomerAnalytics = {
 type AnalyticsStatus =
   "idle" | "loading" | "available" | "unavailable" | "error";
 
-type CachedClientAnalytics = {
-  analytics: CustomerAnalytics | null;
-  status: "available" | "unavailable";
-  timestamp: number;
-};
-
-const CLIENT_ANALYTICS_TTL_MS = 15 * 60 * 1000;
-const clientAnalyticsCache = new Map<string, CachedClientAnalytics>();
-
-const getClientCachedAnalytics = (
-  threadId: string
-): CachedClientAnalytics | null => {
-  const entry = clientAnalyticsCache.get(threadId);
-  if (!entry) {
-    return null;
-  }
-
-  if (Date.now() - entry.timestamp > CLIENT_ANALYTICS_TTL_MS) {
-    clientAnalyticsCache.delete(threadId);
-    return null;
-  }
-
-  return entry;
-};
-
-const setClientCachedAnalytics = (
-  threadId: string,
-  entry: Omit<CachedClientAnalytics, "timestamp">
-): void => {
-  clientAnalyticsCache.set(threadId, {
-    ...entry,
-    timestamp: Date.now(),
-  });
-};
+// Sales figures change slowly; a chat reopened within this window is instant
+const ANALYTICS_STALE_MS = 15 * 60 * 1000;
 
 type MetricTileProps = {
   icon: ReactNode;
@@ -165,85 +136,33 @@ export default function ConversationContext({
   } = useCurrentChat();
   const { backendNames, sessionId } = useAuth();
   const { locale, t } = useTranslations();
-  const [odooBaseUrl, setOdooBaseUrl] = useState<string | null>(null);
-  const [analytics, setAnalytics] = useState<CustomerAnalytics | null>(null);
-  const [analyticsStatus, setAnalyticsStatus] =
-    useState<AnalyticsStatus>("idle");
-
-  useEffect(() => {
-    let isActive = true;
-
-    fetch("/api/config")
-      .then((response) => response.json())
-      .then((data) => {
-        if (isActive && data.odooBaseUrl) {
-          setOdooBaseUrl(data.odooBaseUrl);
-        }
-      })
-      .catch(() => undefined);
-
-    return () => {
-      isActive = false;
-    };
-  }, []);
-
+  const { odooBaseUrl } = useAppConfig();
   const isCustomerConversation = Boolean(partnerId && !group);
-
-  useEffect(() => {
-    const controller = new AbortController();
-
-    if (!chatId || !sessionId || !isCustomerConversation) {
-      setAnalytics(null);
-      setAnalyticsStatus("idle");
-      return () => controller.abort();
-    }
-
-    const cacheKey = `${sessionId}:${chatId}:${partnerId}`;
-    const cached = getClientCachedAnalytics(cacheKey);
-    if (cached) {
-      setAnalytics(cached.analytics);
-      setAnalyticsStatus(cached.status);
-      return () => controller.abort();
-    }
-
-    setAnalytics(null);
-    setAnalyticsStatus("loading");
-
-    fetch(`/api/customer-context?threadId=${encodeURIComponent(chatId)}`, {
-      headers: { "x-session-id": sessionId },
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        const data = (await response.json()) as { analytics?: unknown };
-        if (!response.ok) {
-          throw new Error("Customer analytics request failed");
-        }
-
-        if (isCustomerAnalytics(data.analytics)) {
-          setClientCachedAnalytics(cacheKey, {
-            analytics: data.analytics,
-            status: "available",
-          });
-          setAnalytics(data.analytics);
-          setAnalyticsStatus("available");
-          return;
-        }
-
-        setClientCachedAnalytics(cacheKey, {
-          analytics: null,
-          status: "unavailable",
-        });
-        setAnalyticsStatus("unavailable");
-      })
-      .catch((error: unknown) => {
-        if (error instanceof Error && error.name === "AbortError") {
-          return;
-        }
-        setAnalyticsStatus("error");
-      });
-
-    return () => controller.abort();
-  }, [chatId, isCustomerConversation, partnerId, sessionId]);
+  const analyticsEnabled = !!chatId && !!sessionId && isCustomerConversation;
+  const analyticsQuery = useQuery({
+    queryKey: ["customer-context", chatId, partnerId],
+    enabled: analyticsEnabled,
+    staleTime: ANALYTICS_STALE_MS,
+    // A missing figure is shown in the panel, not as a connection problem
+    meta: { quiet: true },
+    queryFn: ({ signal }) =>
+      apiFetch<{ analytics?: unknown }>(
+        `/api/customer-context?threadId=${encodeURIComponent(chatId as string)}`,
+        { sessionId, signal }
+      ).then((data) =>
+        isCustomerAnalytics(data.analytics) ? data.analytics : null
+      ),
+  });
+  const analytics = analyticsQuery.data ?? null;
+  const analyticsStatus: AnalyticsStatus = !analyticsEnabled
+    ? "idle"
+    : analyticsQuery.isPending
+      ? "loading"
+      : analyticsQuery.isError
+        ? "error"
+        : analytics
+          ? "available"
+          : "unavailable";
 
   const displayName = useMemo(
     () =>

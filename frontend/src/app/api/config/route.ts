@@ -20,5 +20,7 @@ export async function GET() {
 
   return NextResponse.json({
     odooBaseUrl: baseUrl,
+    // Reply suggestions need the RAG service; without it the UI hides them
+    suggestionsEnabled: Boolean(process.env.RAG_SUPPORTED_CHAT_URL),
   });
 }
