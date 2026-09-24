@@ -74,6 +74,10 @@ class WhatsAppMessage(models.Model):
     attachment_id = fields.Many2one(
         comodel_name="ir.attachment",
         string="Attachment",
+        # The chat's media gallery filters messages by attachment type. Without
+        # a join, ir.attachment's own search would load every image of the
+        # database (800k+) into Python to check access to each one.
+        auto_join=True,
         help="Optional media or document associated with the message.",
     )
     payload = fields.Json(

@@ -12,6 +12,7 @@ import { Message } from "@/app/context/chats-provider";
 import { useCurrentChat } from "@/app/hooks/use-current-chat";
 import ContactHeader from "./contact-header";
 import MessageRow from "./message-row";
+import MediaGallery from "../media-gallery";
 import AttachmentPicker from "../message/attachment-picker";
 import TemplatePicker from "../message/template-picker";
 import DragDropZone from "../message/drag-drop-zone";
@@ -31,6 +32,25 @@ import {
 const LOADING_BUBBLE_WIDTHS = ["55%", "40%", "65%", "35%"];
 const SERVICE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
+/** Bring a message the user jumped to into view and flash it. */
+const highlightMessage = (element: HTMLElement) => {
+  requestAnimationFrame(() => {
+    element.scrollIntoView({ block: "center", behavior: "instant" });
+
+    element.style.transition = "background-color 0.5s ease-in-out";
+    element.style.backgroundColor = "rgba(255, 213, 79, 0.3)";
+    element.style.borderRadius = "12px";
+    setTimeout(() => {
+      element.style.backgroundColor = "transparent";
+      setTimeout(() => {
+        element.style.transition = "";
+        element.style.backgroundColor = "";
+        element.style.borderRadius = "";
+      }, 500);
+    }, 1500);
+  });
+};
+
 export default function CurrentChat() {
   const {
     chatId,
@@ -46,6 +66,7 @@ export default function CurrentChat() {
     cancelReply,
     startReply,
     loadPreviousMessages,
+    loadCurrentChat,
     targetMessageId,
     phoneNumber,
     partnerName,
@@ -54,6 +75,7 @@ export default function CurrentChat() {
   const [messageText, setMessageText] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
   const [droppedFile, setDroppedFile] = useState<File | null>(null);
+  const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [isAiImproving, setIsAiImproving] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
   const [isTypingAnimation, setIsTypingAnimation] = useState(false);
@@ -89,6 +111,7 @@ export default function CurrentChat() {
     // Clear message translations when switching threads
     setTranslations(new Map());
     setTranslatingMessageId(null);
+    setIsGalleryOpen(false);
   }, [chatId]);
 
   // WhatsApp's customer-service window: 24 hours after the customer's last
@@ -158,23 +181,22 @@ export default function CurrentChat() {
     const el = document.getElementById(`msg-${targetId}`);
     if (!el) return;
 
-    requestAnimationFrame(() => {
-      el.scrollIntoView({ block: "center", behavior: "instant" });
-
-      // Flash highlight
-      el.style.transition = "background-color 0.5s ease-in-out";
-      el.style.backgroundColor = "rgba(255, 213, 79, 0.3)";
-      el.style.borderRadius = "12px";
-      setTimeout(() => {
-        el.style.backgroundColor = "transparent";
-        setTimeout(() => {
-          el.style.transition = "";
-          el.style.backgroundColor = "";
-          el.style.borderRadius = "";
-        }, 500);
-      }, 1500);
-    });
+    highlightMessage(el);
   }, [targetMessageId, isLoading, messages.length]);
+
+  const closeGallery = useCallback(() => setIsGalleryOpen(false), []);
+
+  // A message already on screen is scrolled to; any other is loaded with
+  // the messages around it, as a search result is.
+  const handleShowMessage = (messageId: string) => {
+    setIsGalleryOpen(false);
+    const element = document.getElementById(`msg-${messageId}`);
+    if (element) {
+      highlightMessage(element);
+    } else {
+      loadCurrentChat({ chatId, targetMessageId: Number(messageId) });
+    }
+  };
 
   // Auto-resize textarea based on content
   const adjustTextareaHeight = () => {
@@ -497,8 +519,8 @@ export default function CurrentChat() {
   };
 
   return (
-    <section className="flex h-full w-full flex-col">
-      <ContactHeader />
+    <section className="relative flex h-full w-full flex-col">
+      <ContactHeader onOpenMedia={() => setIsGalleryOpen(true)} />
       <DragDropZone
         onFilesDrop={handleFilesDrop}
         disabled={isSending || !chatId}
@@ -745,6 +767,14 @@ export default function CurrentChat() {
           </section>
         </div>
       </DragDropZone>
+      {isGalleryOpen && (
+        <MediaGallery
+          threadId={chatId}
+          customerName={customerName}
+          onClose={closeGallery}
+          onShowMessage={handleShowMessage}
+        />
+      )}
     </section>
   );
 }

@@ -26,7 +26,7 @@ const getAttachmentType = (mimetype: string): AttachmentType => {
   return "document";
 };
 
-const getFileIcon = (mimetype: string) => {
+export const getFileIcon = (mimetype: string) => {
   if (mimetype === "application/pdf") {
     return (
       <FilePdf
@@ -72,12 +72,16 @@ const getFileIcon = (mimetype: string) => {
   );
 };
 
-const formatFileSize = (bytes: number): string => {
+export const formatFileSize = (bytes: number): string => {
   if (bytes === 0) return "0 B";
   const sizes = ["B", "KB", "MB", "GB"];
   const index = Math.floor(Math.log(bytes) / Math.log(1024));
   return `${parseFloat((bytes / 1024 ** index).toFixed(1))} ${sizes[index]}`;
 };
+
+/** The attachment through the app's proxy, which checks access in Odoo. */
+export const attachmentDownloadUrl = (attachment: Attachment) =>
+  `/api/attachments/download?url=${encodeURIComponent(attachment.url)}`;
 
 export default function AttachmentDisplay({
   attachment,
@@ -89,7 +93,7 @@ export default function AttachmentDisplay({
   const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
   const attachmentType =
     attachment.type ?? getAttachmentType(attachment.mimetype);
-  const downloadUrl = `/api/attachments/download?url=${encodeURIComponent(attachment.url)}`;
+  const downloadUrl = attachmentDownloadUrl(attachment);
 
   useEffect(() => {
     setPortalRoot(document.body);
