@@ -1,6 +1,5 @@
 import { memo } from "react";
 import type { Message } from "@/app/context/chats-provider";
-import type { CurrentChatContactsGroup } from "@/app/context/current-chat-provider";
 import Reaction from "../message/reaction";
 import ChatMessage from "./chat-message";
 
@@ -8,7 +7,6 @@ type MessageRowProps = {
   message: Message;
   spacingClass: string;
   customerName: string;
-  group: CurrentChatContactsGroup | null;
   translatedText?: string;
   isTranslated: boolean;
   isTranslating: boolean;
@@ -27,7 +25,6 @@ function MessageRow({
   message,
   spacingClass,
   customerName,
-  group,
   translatedText,
   isTranslated,
   isTranslating,
@@ -62,7 +59,6 @@ function MessageRow({
         <ChatMessage
           message={message}
           customerName={customerName}
-          group={group}
           translatedText={translatedText}
           isTranslated={isTranslated}
         />

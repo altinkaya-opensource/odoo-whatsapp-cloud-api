@@ -13,7 +13,6 @@ import ConversationContext from "./components/conversation-context";
 import TabIcons from "./components/tab-icons";
 import TabPanel from "./components/tab-panel";
 import ChatsProvider from "./context/chats-provider";
-import ContactsProvider from "./context/contacts-provider";
 import CurrentChatProvider from "./context/current-chat-provider";
 import ProfileProvider from "./context/profile-provider";
 import TabProvider from "./context/tab-provider";
@@ -104,13 +103,7 @@ function AutoSelectChat() {
       // Load the chat
       loadCurrentChat({
         chatId: targetChat.id,
-        contact: null,
-        messages: [],
-        group: null,
         page: 0,
-        isLoading: true,
-        isPaginationLoading: false,
-        hasMoreMessages: true,
         threadName: targetChat.threadName || null,
         phoneNumber: targetChat.phoneNumber || null,
         backendId: targetChat.backendId || null,
@@ -160,9 +153,6 @@ function NotificationRouter() {
       loadCurrentChat({
         chatId: target.id,
         page: 0,
-        messages: [],
-        contact: null,
-        group: null,
         threadName: target.threadName ?? null,
         phoneNumber: target.phoneNumber ?? null,
         backendId: target.backendId ?? null,
@@ -280,20 +270,18 @@ function AppShell() {
   return (
     <ProfileProvider>
       <TabProvider>
-        <ContactsProvider>
-          <RealtimeProvider>
-            <ChatsProvider includeThreadId={initialThreadId}>
-              <PageTitleUpdater />
-              <CurrentChatProvider>
-                <MobileNavigationProvider>
-                  <AutoSelectChat />
-                  <NotificationRouter />
-                  <ResponsiveLayout />
-                </MobileNavigationProvider>
-              </CurrentChatProvider>
-            </ChatsProvider>
-          </RealtimeProvider>
-        </ContactsProvider>
+        <RealtimeProvider>
+          <ChatsProvider includeThreadId={initialThreadId}>
+            <PageTitleUpdater />
+            <CurrentChatProvider>
+              <MobileNavigationProvider>
+                <AutoSelectChat />
+                <NotificationRouter />
+                <ResponsiveLayout />
+              </MobileNavigationProvider>
+            </CurrentChatProvider>
+          </ChatsProvider>
+        </RealtimeProvider>
       </TabProvider>
     </ProfileProvider>
   );

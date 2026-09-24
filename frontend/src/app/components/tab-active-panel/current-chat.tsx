@@ -47,7 +47,6 @@ export default function CurrentChat() {
     phoneNumber,
     partnerName,
     threadName,
-    group,
   } = useCurrentChat();
   const [messageText, setMessageText] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
@@ -571,13 +570,11 @@ export default function CurrentChat() {
     );
   }
 
-  const getMessageSpacing = (
-    index: number,
-    reactionsCount?: number
-  ): string => {
+  const getMessageSpacing = (index: number): string => {
     if (index === messages.length - 1) {
       return "mb-0";
-    } else if (reactionsCount && reactionsCount > 0) {
+    } else if (messages[index].reactionEmoji) {
+      // Room for the reaction badge under the bubble
       return "mb-4";
     } else if (
       messages[index].isSentFromUser === messages[index + 1]?.isSentFromUser &&
@@ -649,12 +646,8 @@ export default function CurrentChat() {
                   <MessageRow
                     key={message.id ?? `message-${index}`}
                     message={message}
-                    spacingClass={getMessageSpacing(
-                      index,
-                      message.reactions?.length
-                    )}
+                    spacingClass={getMessageSpacing(index)}
                     customerName={customerName}
-                    group={group}
                     translatedText={translation?.translated}
                     isTranslated={!!translation}
                     isTranslating={translatingMessageId === message.id}

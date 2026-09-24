@@ -4,16 +4,13 @@ import { useChats } from "@/app/hooks/use-chats";
 import {
   Chat,
   Filters,
-  Message,
   MessageSearchResult,
 } from "@/app/context/chats-provider";
 import Profile from "../profile";
-import { useContacts } from "@/app/hooks/use-contacts";
 import { useCurrentChat } from "@/app/hooks/use-current-chat";
 import dayjs from "dayjs";
 import { formatTime } from "@/app/utils";
 import { useTranslations } from "@/app/context/translation-provider";
-import MessageStatusIcon from "../message-status-icon";
 import { useMobileNavigation } from "@/app/context/mobile-navigation-provider";
 import { useResponsive } from "@/app/hooks/use-responsive";
 import BackendSelector from "../backend-selector";
@@ -37,8 +34,7 @@ export default function Chats({ selectedTab }: { selectedTab: string }) {
     isLoadingMoreMessages,
     loadMoreMessageResults,
   } = useChats();
-  const { getContact } = useContacts();
-  const { loadCurrentChat, contact, chatId: currentChatId } = useCurrentChat();
+  const { loadCurrentChat, chatId: currentChatId } = useCurrentChat();
   const { t, locale } = useTranslations();
   const { showActiveChat } = useMobileNavigation();
   const { isMobile } = useResponsive();
@@ -90,23 +86,6 @@ export default function Chats({ selectedTab }: { selectedTab: string }) {
     searchQuery.length,
   ]);
 
-  const getMetaMessage = (chat: Chat, message?: Message): string => {
-    if (!message) {
-      return chat.lastMessagePreview ?? "";
-    }
-
-    if (chat.group) {
-      const groupContact = getContact(message.contactId);
-      return `${groupContact?.displayName ?? "Unknown"}: ${message.message}`;
-    }
-
-    if (contact?.typing && contact.id === message.contactId) {
-      return t("chat.typing");
-    }
-
-    return message.message;
-  };
-
   const handleMarkAllRead = async () => {
     const unreadChats = complete.filter((chat) => !chat.read);
     if (unreadChats.length === 0) return;
@@ -129,27 +108,13 @@ export default function Chats({ selectedTab }: { selectedTab: string }) {
   };
 
   const renderChat = (chat: Chat) => {
-    const currentContact = getContact(
-      typeof chat.contactId === "string" ? chat.contactId : ""
-    );
     const name =
-      typeof chat.contactId === "string"
-        ? (chat.partnerName ??
-          currentContact?.displayName ??
-          chat.threadName ??
-          "Unknown")
-        : (chat.groupName ?? chat.threadName ?? "Unknown");
-    // For non-active chats, prefer lastMessagePreview over messages array
-    // since messages array only contains data for the currently active chat
-    const isCurrentChat =
-      typeof chat.contactId === "string" && chat.contactId === contact?.id;
-    const lastMessage =
-      isCurrentChat && chat.messages.length > 0
-        ? chat.messages[chat.messages.length - 1]
-        : undefined;
-    const messagePreview = getMetaMessage(chat, lastMessage);
-    const lastMessageTimestamp =
-      lastMessage?.timestamp ?? chat.lastMessageAt ?? null;
+      chat.partnerName ??
+      chat.threadName ??
+      chat.phoneNumber ??
+      t("context.unknownContact");
+    const messagePreview = chat.lastMessagePreview ?? "";
+    const lastMessageTimestamp = chat.lastMessageAt ?? null;
     const formattedDate = lastMessageTimestamp
       ? dayjs(lastMessageTimestamp).isSame(dayjs(), "day")
         ? formatTime(lastMessageTimestamp, locale)
@@ -157,7 +122,6 @@ export default function Chats({ selectedTab }: { selectedTab: string }) {
             date: dayjs(lastMessageTimestamp).format("MMM D, YYYY"),
           })
       : "";
-    const isSentFromUser = lastMessage?.isSentFromUser ?? false;
 
     return (
       <button
@@ -169,10 +133,7 @@ export default function Chats({ selectedTab }: { selectedTab: string }) {
             loadCurrentChat({
               chatId: chat.id,
               page: 0,
-              messages: [],
-              contact: null,
-              group: null,
-              threadName: chat.threadName ?? chat.groupName ?? null,
+              threadName: chat.threadName ?? null,
               phoneNumber: chat.phoneNumber ?? null,
               backendId: chat.backendId ?? null,
               partnerId: chat.partnerId ?? null,
@@ -193,48 +154,26 @@ export default function Chats({ selectedTab }: { selectedTab: string }) {
         aria-current={chat.id === currentChatId ? "page" : undefined}
       >
         <div className="col-span-1">
-          {!chat.group ? (
-            <Profile
-              size="12"
-              url={
-                chat.hasAvatar
-                  ? (chat.partnerAvatar ??
-                    currentContact?.contactAvatar ??
-                    undefined)
-                  : undefined
-              }
-              alt={name}
-              seed={chat.partnerId ?? undefined}
-            />
-          ) : (
-            <Profile
-              size="12"
-              url={chat.groupAvatar || undefined}
-              alt={name}
-              kind="group"
-            />
-          )}
+          <Profile
+            size="12"
+            url={chat.hasAvatar ? (chat.partnerAvatar ?? undefined) : undefined}
+            alt={name}
+            seed={chat.partnerId ?? undefined}
+          />
         </div>
         <div className="col-span-4 flex flex-col justify-center items-start w-full min-w-0">
           <p className="text-[rgb(var(--text-primary))] truncate w-full text-left">
             {name}
           </p>
           <div className="flex justify-start items-center gap-1 w-full min-w-0">
-            {lastMessage && <MessageStatusIcon message={lastMessage} />}
             <p
               className={`text-sm ${
-                chat.read || isSentFromUser
+                chat.read
                   ? "text-[rgb(var(--text-secondary)/var(--text-secondary-opacity))]"
                   : "text-[rgb(var(--text-primary))] font-semibold"
-              } whitespace-nowrap truncate text-ellipsis overflow-hidden ${
-                contact?.typing && lastMessage
-                  ? "text-[rgb(var(--accent-primary))] font-medium"
-                  : ""
-              }`}
+              } whitespace-nowrap truncate text-ellipsis overflow-hidden`}
             >
-              {contact?.typing && lastMessage
-                ? getMetaMessage(chat, lastMessage)
-                : messagePreview}
+              {messagePreview}
             </p>
           </div>
         </div>
@@ -242,7 +181,7 @@ export default function Chats({ selectedTab }: { selectedTab: string }) {
           {lastMessageTimestamp && (
             <p
               className={`text-xs font-semibold ${
-                chat.read || isSentFromUser
+                chat.read
                   ? "text-[rgb(var(--text-secondary)/var(--text-secondary-opacity))]"
                   : "text-[rgb(var(--accent-active))]"
               }`}
@@ -281,9 +220,6 @@ export default function Chats({ selectedTab }: { selectedTab: string }) {
           loadCurrentChat({
             chatId: threadId,
             page: 0,
-            messages: [],
-            contact: null,
-            group: null,
             threadName: result.threadName ?? null,
             phoneNumber: result.phoneNumber ?? null,
             backendId: result.backendId ?? null,

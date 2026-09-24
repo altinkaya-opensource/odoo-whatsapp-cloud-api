@@ -1,8 +1,3 @@
-export type ReactionType = {
-  emoji: string;
-  count: number;
-};
-
 export type AttachmentType = "image" | "video" | "audio" | "document";
 
 export type Attachment = {
@@ -23,7 +18,6 @@ export type Message = {
   read?: boolean;
   sent?: boolean;
   delivered?: boolean;
-  reactions?: ReactionType[];
   error?: string;
   userId?: number | null;
   whatsappId?: string | null;
@@ -41,9 +35,6 @@ export type Message = {
 
 export type Chat = {
   id: string;
-  contactId: string | string[];
-  groupName?: string;
-  groupAvatar?: string;
   threadName?: string;
   phoneNumber?: string | null;
   backendId?: number | null;
@@ -55,9 +46,6 @@ export type Chat = {
   lastMessageAt?: number | null;
   unreadCount?: number;
   read: boolean;
-  group: boolean;
-  favorite: boolean;
-  messages: Message[];
 };
 
 export type MessageSearchResult = {

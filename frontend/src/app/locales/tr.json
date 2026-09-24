@@ -35,8 +35,6 @@
     "filters": {
       "all": "Tümü",
       "unread": "Okunmamış",
-      "favorites": "Favoriler",
-      "groups": "Gruplar",
       "readAll": "Tümünü Oku"
     },
     "backendSelector": {
@@ -48,15 +46,11 @@
     "loadingOlderMessages": "Eski mesajlar yükleniyor...",
     "loadingOlderThreads": "Eski sohbetler yükleniyor...",
     "loadOlderThreads": "Eski sohbetleri yükle",
-    "typing": "yazıyor...",
-    "statusTyping": "yazıyor",
-    "statusOnline": "çevrimiçi",
     "dayToday": "Bugün",
     "dayYesterday": "Dün",
     "reply": "Yanıtla",
     "addReaction": "Tepki ekle",
     "openInOdoo": "Odoo",
-    "openInOdooTitle": "Odoo'da partneri aç",
     "backToChats": "Sohbetlere dön",
     "noResults": "Sohbet bulunamadı",
     "noResultsHint": "Farklı bir arama terimi deneyin",
@@ -72,7 +66,6 @@
     "emptyDescription": "Bağlı Odoo müşterisini görmek için bir sohbet seçin.",
     "unknownContact": "Bilinmeyen müşteri",
     "customer": "Müşteri",
-    "group": "Grup",
     "phone": "Telefon",
     "backend": "WhatsApp hesabı",
     "analyticsTitle": "Satış analitiği",
@@ -100,11 +93,7 @@
     "aiImproveError": "Metin yapay zeka ile iyileştirilemedi",
     "translate": "Müşteri diline çevir",
     "translateError": "Metin çevrilemedi",
-    "ragGenerate": "Yapay zeka yanıtı oluştur (RAG)",
-    "ragGenerating": "Oluşturuluyor...",
-    "ragGenerateError": "Yapay zeka yanıtı oluşturulamadı",
     "suggestionsLoading": "Öneriler oluşturuluyor...",
-    "suggestionsError": "Öneriler oluşturulamadı",
     "suggestedReplies": "Yanıt önerileri",
     "refreshSuggestions": "Önerileri yenile",
     "attachmentError": "Ek gönderilemedi",
@@ -137,15 +126,6 @@
     "empty": "Bu hesap için kullanılabilir şablon mesaj bulunamadı.",
     "loading": "Şablonlar yükleniyor...",
     "error": "Şablonlar yüklenemedi"
-  },
-  "chatList": {
-    "title": "Sohbetler",
-    "newChat": "Yeni sohbet",
-    "newGroup": "Yeni grup",
-    "newContact": "Yeni kişi",
-    "newCommunity": "Yeni topluluk",
-    "searchPlaceholder": "Sohbetler içinde ara",
-    "emptyProfileSubtitle": "Kendinize mesaj gönderin"
   },
   "navigation": {
     "chats": "Sohbetler",
@@ -202,15 +182,7 @@
     "identityDescription": "Giriş yaptığınız çalışma alanı kimliği.",
     "openSettings": "Ayarları aç"
   },
-  "newChat": {
-    "title": "Yeni sohbet",
-    "searchPlaceholder": "İsim ya da numara ara",
-    "contactsHeader": "Uygulamadaki kişiler",
-    "selfLabel": "(Sen)"
-  },
   "common": {
-    "today": "Bugün",
-    "yesterday": "Dün",
     "dateFormat": "{{date}}",
     "comingSoon": "Yakında...",
     "you": "Sen"

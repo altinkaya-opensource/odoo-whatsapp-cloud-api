@@ -10,8 +10,6 @@ import {
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { Chat, Message } from "./chats-provider";
 import { useChats } from "../hooks/use-chats";
-import { useContacts } from "../hooks/use-contacts";
-import { Contact } from "./contacts-provider";
 import { useAuth } from "../hooks/use-auth";
 import { useRealtime } from "../hooks/use-realtime";
 import { useConnection } from "./connection-provider";
@@ -36,21 +34,8 @@ const MESSAGE_BATCH_SIZE = 100;
 const POLL_INTERVAL_MS = 10 * 60 * 1000;
 const DELIVERED_STATUSES = new Set(["delivered", "read"]);
 
-export type CurrentChatContacts = {
-  [contactId: string]: Contact | undefined;
-};
-
-export type CurrentChatContactsGroup = {
-  name: string;
-  avatar: string;
-  contacts: CurrentChatContacts;
-};
-
 export type CurrentChatData = {
   chatId: string | null;
-  contact: Contact | null;
-  messages: Message[];
-  group: CurrentChatContactsGroup | null;
   page: number;
   isLoading: boolean;
   isPaginationLoading: boolean;
@@ -68,6 +53,7 @@ export type CurrentChatData = {
 };
 
 export type CurrentChat = CurrentChatData & {
+  messages: Message[];
   loadCurrentChat: (chat: Partial<CurrentChatData>) => void;
   sendMessage: (content: string) => Promise<void>;
   sendAttachment: (file: File, caption?: string) => Promise<void>;
@@ -84,7 +70,7 @@ export const CurrentChatContext = createContext<undefined | CurrentChat>(
 // Everything but the messages, which live in the query cache
 type ChatState = Omit<
   CurrentChatData,
-  "messages" | "isLoading" | "isPaginationLoading" | "hasMoreMessages"
+  "isLoading" | "isPaginationLoading" | "hasMoreMessages"
 >;
 
 type SendResult = {
@@ -111,8 +97,6 @@ const oldestMessageId = (messages: Message[]) => {
 export default function CurrentChatProvider({ children }: PropsWithChildren) {
   const [currentChat, setCurrentChat] = useState<ChatState>({
     chatId: null,
-    contact: null,
-    group: null,
     page: 0,
     threadName: null,
     phoneNumber: null,
@@ -130,7 +114,6 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
     updateThreadPreview,
     markChatAsRead,
   } = useChats();
-  const { contacts } = useContacts();
   const { isAuthenticated, backendUserId } = useAuth();
   const { reportApiError, reportConnectionRestored } = useConnection();
   const queryClient = useQueryClient();
@@ -222,27 +205,22 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
     [complete, chatId]
   );
   const header = useMemo(() => {
-    if (!listedChat || typeof listedChat.contactId !== "string") {
+    if (!listedChat) {
       return currentChat;
     }
-    const contactId = listedChat.contactId;
-    const contact = contacts.find((entry: Contact) => entry.id === contactId);
     return {
       ...currentChat,
-      contact: contact ?? null,
-      group: null,
       threadName: listedChat.threadName ?? currentChat.threadName,
       phoneNumber:
         listedChat.phoneNumber ??
         currentChat.phoneNumber ??
-        extractDigits(listedChat.threadName) ??
-        extractDigits(contact?.displayName),
+        extractDigits(listedChat.threadName),
       backendId: listedChat.backendId ?? currentChat.backendId,
       partnerId: listedChat.partnerId ?? currentChat.partnerId,
       partnerName: listedChat.partnerName ?? currentChat.partnerName,
       hasAvatar: listedChat.hasAvatar === true,
     };
-  }, [listedChat, contacts, currentChat]);
+  }, [listedChat, currentChat]);
 
   const loadCurrentChat = useCallback(
     (chat: Partial<CurrentChatData>) => {

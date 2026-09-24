@@ -35,8 +35,6 @@
     "filters": {
       "all": "All",
       "unread": "Unread",
-      "favorites": "Favorites",
-      "groups": "Groups",
       "readAll": "Read All"
     },
     "backendSelector": {
@@ -48,15 +46,11 @@
     "loadingOlderMessages": "Loading older messages...",
     "loadingOlderThreads": "Loading older chats...",
     "loadOlderThreads": "Load older chats",
-    "typing": "typing...",
-    "statusTyping": "typing",
-    "statusOnline": "online",
     "dayToday": "Today",
     "dayYesterday": "Yesterday",
     "reply": "Reply",
     "addReaction": "Add reaction",
     "openInOdoo": "Odoo",
-    "openInOdooTitle": "Open partner in Odoo",
     "backToChats": "Back to chats",
     "noResults": "No chats found",
     "noResultsHint": "Try a different search term",
@@ -72,7 +66,6 @@
     "emptyDescription": "Select a conversation to see the linked Odoo customer.",
     "unknownContact": "Unknown customer",
     "customer": "Customer",
-    "group": "Group",
     "phone": "Phone",
     "backend": "WhatsApp account",
     "analyticsTitle": "Sales analytics",
@@ -100,11 +93,7 @@
     "aiImproveError": "Failed to improve text with AI",
     "translate": "Translate to customer's language",
     "translateError": "Failed to translate text",
-    "ragGenerate": "Generate AI response (RAG)",
-    "ragGenerating": "Generating...",
-    "ragGenerateError": "Failed to generate AI response",
     "suggestionsLoading": "Generating suggestions...",
-    "suggestionsError": "Failed to generate suggestions",
     "suggestedReplies": "Suggested replies",
     "refreshSuggestions": "Refresh suggestions",
     "attachmentError": "Failed to send attachment",
@@ -137,15 +126,6 @@
     "empty": "No template messages available for this account.",
     "loading": "Loading templates...",
     "error": "Failed to load templates"
-  },
-  "chatList": {
-    "title": "Chats",
-    "newChat": "New Chat",
-    "newGroup": "New Group",
-    "newContact": "New Contact",
-    "newCommunity": "New Community",
-    "searchPlaceholder": "Search in chats",
-    "emptyProfileSubtitle": "Message yourself"
   },
   "navigation": {
     "chats": "Chats",
@@ -202,15 +182,7 @@
     "identityDescription": "Your signed-in workspace identity.",
     "openSettings": "Open settings"
   },
-  "newChat": {
-    "title": "New Chat",
-    "searchPlaceholder": "Search for name or number",
-    "contactsHeader": "Contacts on App",
-    "selfLabel": "(You)"
-  },
   "common": {
-    "today": "Today",
-    "yesterday": "Yesterday",
     "dateFormat": "{{date}}",
     "comingSoon": "Coming soon...",
     "you": "You"

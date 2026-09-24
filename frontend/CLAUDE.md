@@ -213,9 +213,8 @@ Server state (threads, messages, message search, unread count) lives in the
 TanStack Query cache (`QueryProvider`); realtime events and sends patch it
 through `src/app/lib/whatsapp/`. Client state lives in providers:
 `AuthProvider`, `ChatsProvider`, `CurrentChatProvider`, `RealtimeProvider`,
-`ContactsProvider`, `TranslationProvider`, `ThemeProvider`,
-`ConnectionProvider`, `MobileNavigationProvider`, `TabSyncProvider`,
-`ProfileProvider`.
+`TranslationProvider`, `ThemeProvider`, `ConnectionProvider`,
+`MobileNavigationProvider`, `TabSyncProvider`, `ProfileProvider`.
 
 Reach them through their hooks (`useAuth`, `useChats`, `useCurrentChat`,
 `useRealtime`, `useTheme`, `useTranslations`), never through `useContext`

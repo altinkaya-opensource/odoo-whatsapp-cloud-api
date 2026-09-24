@@ -124,8 +124,6 @@ export default function ConversationContext({
 }: ConversationContextProps) {
   const {
     chatId,
-    contact,
-    group,
     threadName,
     partnerId,
     partnerName,
@@ -137,7 +135,7 @@ export default function ConversationContext({
   const { backendNames, isAuthenticated } = useAuth();
   const { locale, t } = useTranslations();
   const { odooBaseUrl } = useAppConfig();
-  const isCustomerConversation = Boolean(partnerId && !group);
+  const isCustomerConversation = Boolean(partnerId);
   const analyticsEnabled =
     !!chatId && isAuthenticated && isCustomerConversation;
   const analyticsQuery = useQuery({
@@ -167,12 +165,8 @@ export default function ConversationContext({
 
   const displayName = useMemo(
     () =>
-      group?.name ??
-      partnerName ??
-      contact?.displayName ??
-      threadName ??
-      t("context.unknownContact"),
-    [contact?.displayName, group?.name, partnerName, t, threadName]
+      partnerName ?? threadName ?? phoneNumber ?? t("context.unknownContact"),
+    [partnerName, phoneNumber, t, threadName]
   );
   const backendName = backendId ? backendNames[backendId] : null;
   const partnerUrl =
@@ -252,23 +246,16 @@ export default function ConversationContext({
         <div className="flex items-center gap-3">
           <Profile
             size="12"
-            url={
-              group
-                ? group.avatar || undefined
-                : hasAvatar
-                  ? (partnerAvatar ?? contact?.contactAvatar)
-                  : undefined
-            }
+            url={hasAvatar ? (partnerAvatar ?? undefined) : undefined}
             alt={displayName}
             seed={partnerId ?? undefined}
-            kind={group ? "group" : "person"}
           />
           <div className="min-w-0">
             <p className="truncate text-base font-semibold text-[rgb(var(--text-primary))]">
               {displayName}
             </p>
             <p className="mt-0.5 text-sm text-[rgb(var(--text-secondary))]">
-              {group ? t("context.group") : t("context.customer")}
+              {t("context.customer")}
             </p>
           </div>
         </div>

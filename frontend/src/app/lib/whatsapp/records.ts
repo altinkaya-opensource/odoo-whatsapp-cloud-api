@@ -55,7 +55,6 @@ export const toChat = (
   const partnerId = many2oneId(record.partner_id);
   return {
     id,
-    contactId: id,
     threadName: record.name || undefined,
     phoneNumber: record.phone_number ?? null,
     backendId: many2oneId(record.backend_id),
@@ -67,9 +66,6 @@ export const toChat = (
     lastMessageAt: odooDateToMs(record.last_message_date),
     unreadCount: record.unread_count,
     read: (record.unread_count ?? 0) === 0,
-    group: false,
-    favorite: false,
-    messages: [],
   };
 };
 
@@ -92,7 +88,6 @@ export const mergeChat = (existing: Chat | undefined, update: Chat): Chat => {
     lastMessageAt: update.lastMessageAt ?? existing.lastMessageAt,
     unreadCount,
     read: unreadCount === 0,
-    messages: existing.messages,
   };
 };
 

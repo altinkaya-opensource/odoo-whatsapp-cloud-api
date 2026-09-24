@@ -41,14 +41,11 @@ export type {
   Chat,
   Message,
   MessageSearchResult,
-  ReactionType,
 } from "../lib/whatsapp/types";
 
 export enum Filters {
   ALL = "all",
   UNREAD = "unread",
-  FAVORITES = "favorites",
-  GROUPS = "groups",
 }
 
 export type Chats = {
