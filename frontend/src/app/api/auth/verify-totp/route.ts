@@ -7,6 +7,12 @@ import {
 } from "@/app/lib/pending-totp";
 import { sessionCache } from "@/app/lib/session-cache";
 import { setSessionCookie } from "@/app/lib/session-cookie";
+import {
+  accountFailures,
+  addressFailures,
+  clientAddress,
+  tooManyAttempts,
+} from "@/app/lib/rate-limit";
 
 type WhatsAppBackend = {
   backend_id?: number;
@@ -42,6 +48,17 @@ export async function POST(request: NextRequest) {
     typeof code === "string" ? code.replace(/\s/g, "") : "";
   if (!/^\d{6}$/.test(normalizedCode)) {
     return NextResponse.json({ error: "totp_invalid_format" }, { status: 400 });
+  }
+
+  // Six digits: a few guesses per sign-in, and per client
+  const addressKey = clientAddress(request);
+  const signInKey = `totp:${pendingSessionId}`;
+  const wait = Math.max(
+    addressFailures.retryAfter(addressKey),
+    accountFailures.retryAfter(signInKey)
+  );
+  if (wait > 0) {
+    return tooManyAttempts(wait);
   }
 
   try {
@@ -98,6 +115,8 @@ export async function POST(request: NextRequest) {
     }
 
     if (err.data?.name === "odoo.exceptions.AccessDenied") {
+      addressFailures.fail(addressKey);
+      accountFailures.fail(signInKey);
       return NextResponse.json({ error: "totp_invalid" }, { status: 401 });
     }
 

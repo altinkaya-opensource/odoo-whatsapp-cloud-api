@@ -28,7 +28,8 @@
     "workspaceDescription": "Müşteri mesajlarını Odoo işlerinizle aynı akışta yönetin.",
     "workspaceFeatureContext": "Bağlı Odoo müşterisini açın",
     "workspaceFeatureTemplates": "Gerektiğinde onaylı şablonları kullanın",
-    "workspaceFeatureUpdates": "Canlı sohbet güncellemelerini takip edin"
+    "workspaceFeatureUpdates": "Canlı sohbet güncellemelerini takip edin",
+    "tooManyAttempts": "Çok fazla hatalı deneme. Birkaç dakika bekleyip yeniden deneyin."
   },
   "chat": {
     "filters": {

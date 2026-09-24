@@ -53,7 +53,7 @@ docker build -t odoo-whatsapp-frontend .
 # Run the container
 docker run -d \
   --name odoo-whatsapp-frontend \
-  -p 3000:3000 \
+  -p 127.0.0.1:3000:3000 \
   --env-file .env.production \
   odoo-whatsapp-frontend
 ```
@@ -104,13 +104,18 @@ server {
 }
 ```
 
-### Option 2: Direct Deployment with Custom Port
+The sign-in limits count failed attempts per `X-Real-IP`, which nginx sets.
+Publish the container on `127.0.0.1` only (as `docker-compose.yml` does), so
+nobody reaches Next around nginx with a forged `X-Real-IP`.
 
-Modify `docker-compose.yml` to expose a different port:
+### Option 2: A Different Local Port
+
+Modify `docker-compose.yml` to use a different port, still on `127.0.0.1`
+behind the reverse proxy:
 
 ```yaml
 ports:
-  - "8080:3000"
+  - "127.0.0.1:8080:3000"
 ```
 
 ## Docker Commands Reference

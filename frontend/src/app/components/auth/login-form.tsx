@@ -37,6 +37,8 @@ export default function LoginForm() {
         return t("auth.totpCodeRequired");
       case "totp_unavailable":
         return t("auth.totpUnavailable");
+      case "too_many_attempts":
+        return t("auth.tooManyAttempts");
       default:
         return message;
     }

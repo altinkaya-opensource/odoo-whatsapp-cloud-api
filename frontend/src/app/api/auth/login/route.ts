@@ -10,6 +10,12 @@ import {
   clearPendingTotpCookie,
   setPendingTotpCookie,
 } from "@/app/lib/pending-totp";
+import {
+  accountFailures,
+  addressFailures,
+  clientAddress,
+  tooManyAttempts,
+} from "@/app/lib/rate-limit";
 
 export async function POST(request: Request) {
   if (!process.env.ODOO_JSONRPC_HOST || !process.env.ODOO_JSONRPC_DATABASE) {
@@ -31,6 +37,16 @@ export async function POST(request: Request) {
     );
   }
 
+  const addressKey = clientAddress(request);
+  const accountKey = username.trim().toLowerCase();
+  const wait = Math.max(
+    addressFailures.retryAfter(addressKey),
+    accountFailures.retryAfter(accountKey)
+  );
+  if (wait > 0) {
+    return tooManyAttempts(wait);
+  }
+
   try {
     const { sessionId, result, session } =
       await createOdooClient().authenticate({
@@ -38,6 +54,8 @@ export async function POST(request: Request) {
         username,
         password,
       });
+
+    accountFailures.reset(accountKey);
 
     // Odoo deliberately returns uid: null after a correct password when
     // TOTP is enabled. Keep that partial session server-side until the code
@@ -88,6 +106,8 @@ export async function POST(request: Request) {
     };
 
     if (err.data?.name === "odoo.exceptions.AccessDenied") {
+      addressFailures.fail(addressKey);
+      accountFailures.fail(accountKey);
       return NextResponse.json(
         { error: err.data.message || "Wrong login/password" },
         { status: 401 }

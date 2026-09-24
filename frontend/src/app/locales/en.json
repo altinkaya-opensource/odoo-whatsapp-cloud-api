@@ -28,7 +28,8 @@
     "workspaceDescription": "Handle customer messages in the same workflow as the rest of your Odoo work.",
     "workspaceFeatureContext": "Open the linked Odoo customer",
     "workspaceFeatureTemplates": "Use approved templates when required",
-    "workspaceFeatureUpdates": "Stay current with live conversation updates"
+    "workspaceFeatureUpdates": "Stay current with live conversation updates",
+    "tooManyAttempts": "Too many failed attempts. Wait a few minutes and try again."
   },
   "chat": {
     "filters": {
