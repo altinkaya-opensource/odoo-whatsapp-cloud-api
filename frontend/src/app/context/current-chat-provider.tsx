@@ -13,7 +13,8 @@ import { useChats } from "../hooks/use-chats";
 import { useAuth } from "../hooks/use-auth";
 import { useRealtime } from "../hooks/use-realtime";
 import { useConnection } from "./connection-provider";
-import { apiFetch } from "../lib/api-client";
+import { apiFetch, userErrorMessage } from "../lib/api-client";
+import { useTranslations } from "./translation-provider";
 import { markMessagesAsSeen, setActiveThread } from "../lib/notifications";
 import {
   messagesKey,
@@ -115,6 +116,7 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
     markChatAsRead,
   } = useChats();
   const { isAuthenticated, backendUserId } = useAuth();
+  const { t } = useTranslations();
   const { reportApiError, reportConnectionRestored } = useConnection();
   const queryClient = useQueryClient();
   const { chatId, targetMessageId } = currentChat;
@@ -355,7 +357,7 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
         upsertCachedMessages(queryClient, threadId, [
           {
             ...pending,
-            error: (error as Error).message || "Failed to send the message",
+            error: userErrorMessage(error, t("chatInput.sendError")),
           },
         ]);
         throw error;
@@ -373,6 +375,7 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
       updateThreadPreview,
       reportApiError,
       reportConnectionRestored,
+      t,
     ]
   );
 
@@ -451,7 +454,7 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
           {
             ...pending,
             attachment: undefined,
-            error: (error as Error).message || "Failed to send the attachment",
+            error: userErrorMessage(error, t("chatInput.attachmentError")),
           },
         ]);
         throw error;
@@ -467,6 +470,7 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
       updateThreadPreview,
       reportApiError,
       reportConnectionRestored,
+      t,
     ]
   );
 

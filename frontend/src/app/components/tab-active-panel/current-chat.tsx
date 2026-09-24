@@ -18,6 +18,7 @@ import DragDropZone from "../message/drag-drop-zone";
 import SuggestionChips from "../message/suggestion-chips";
 import { useTranslations } from "@/app/context/translation-provider";
 import { useAppConfig } from "@/app/hooks/use-app-config";
+import { userErrorMessage } from "@/app/lib/api-client";
 import {
   ChatCircleDotsIcon,
   XCircleIcon,
@@ -200,8 +201,7 @@ export default function CurrentChat() {
         textareaRef.current?.focus();
       }, 0);
     } catch (error) {
-      const err = error as Error;
-      setSendError(err.message || t("chatInput.sendError"));
+      setSendError(userErrorMessage(error, t("chatInput.sendError")));
     }
   };
 
@@ -210,8 +210,7 @@ export default function CurrentChat() {
     try {
       await sendAttachment(file, caption);
     } catch (error) {
-      const err = error as Error;
-      setSendError(err.message || t("chatInput.attachmentError"));
+      setSendError(userErrorMessage(error, t("chatInput.attachmentError")));
     }
   };
 
@@ -293,8 +292,8 @@ export default function CurrentChat() {
         reader.cancel();
       }
     } catch (error) {
-      const err = error as Error;
-      setSendError(err.message || t("chatInput.aiImproveError"));
+      console.error("[AI] Improve failed:", error);
+      setSendError(t("chatInput.aiImproveError"));
     } finally {
       setIsAiImproving(false);
       setIsTypingAnimation(false);
@@ -372,8 +371,8 @@ export default function CurrentChat() {
         reader.cancel();
       }
     } catch (error) {
-      const err = error as Error;
-      setSendError(err.message || t("chatInput.translateError"));
+      console.error("[AI] Translate failed:", error);
+      setSendError(t("chatInput.translateError"));
       setMessageText(originalText); // Restore original text on error
     } finally {
       setIsTranslating(false);

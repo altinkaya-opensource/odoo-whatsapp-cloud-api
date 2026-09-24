@@ -17,6 +17,7 @@ import {
 } from "@tanstack/react-query";
 import { useAuth } from "../hooks/use-auth";
 import { useRealtime } from "../hooks/use-realtime";
+import { useTranslations } from "./translation-provider";
 import { apiFetch } from "../lib/api-client";
 import { buildPartnerAvatarUrl } from "../lib/odoo/avatar-url";
 import {
@@ -184,6 +185,7 @@ export default function ChatsProvider({
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState<string>("");
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { isAuthenticated } = useAuth();
+  const { t } = useTranslations();
   const queryClient = useQueryClient();
   const search = debouncedSearchQuery.trim();
 
@@ -355,7 +357,7 @@ export default function ChatsProvider({
           threadId,
           messageId: record.id,
           title: threadName ?? "WhatsApp",
-          body: record.body || "New message",
+          body: record.body || t("chat.newMessage"),
         });
         // The open thread is marked read at once, even in a hidden tab
         if (isNew && interrupted && !isActiveThread(threadId)) {
@@ -375,7 +377,7 @@ export default function ChatsProvider({
         };
       });
     },
-    [queryClient]
+    [queryClient, t]
   );
 
   useRealtime({

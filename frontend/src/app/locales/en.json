@@ -56,7 +56,8 @@
     "noResultsHint": "Try a different search term",
     "translated": "Translated",
     "searchSectionContacts": "Contacts",
-    "searchSectionMessages": "Messages"
+    "searchSectionMessages": "Messages",
+    "newMessage": "New message"
   },
   "context": {
     "title": "Customer context",

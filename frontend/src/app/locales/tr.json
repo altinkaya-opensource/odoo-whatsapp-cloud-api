@@ -56,7 +56,8 @@
     "noResultsHint": "Farklı bir arama terimi deneyin",
     "translated": "Çevrildi",
     "searchSectionContacts": "Kişiler",
-    "searchSectionMessages": "Mesajlar"
+    "searchSectionMessages": "Mesajlar",
+    "newMessage": "Yeni mesaj"
   },
   "context": {
     "title": "Müşteri bilgileri",

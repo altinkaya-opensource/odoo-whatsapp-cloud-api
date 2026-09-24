@@ -203,7 +203,11 @@ export default function Chats({ selectedTab }: { selectedTab: string }) {
   };
 
   const renderMessageResult = (result: MessageSearchResult) => {
-    const name = result.partnerName ?? result.threadName ?? "Unknown";
+    const name =
+      result.partnerName ??
+      result.threadName ??
+      result.phoneNumber ??
+      t("context.unknownContact");
     const threadId = String(result.threadId);
     const formattedDate = result.messageTimestamp
       ? dayjs(result.messageTimestamp * 1000).isSame(dayjs(), "day")

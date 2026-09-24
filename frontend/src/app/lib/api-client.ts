@@ -22,6 +22,19 @@ type ApiFetchOptions = {
   signal?: AbortSignal;
 };
 
+// Refusals from Odoo (UserError, AccessError): their text is written for
+// the user, in the user's language
+const ODOO_REFUSAL_STATUSES = new Set([400, 403]);
+
+/**
+ * What to tell the user about a failed request: Odoo's own message when it
+ * refused the action, otherwise the caller's translated fallback.
+ */
+export const userErrorMessage = (error: unknown, fallback: string): string =>
+  error instanceof ApiError && ODOO_REFUSAL_STATUSES.has(error.status)
+    ? error.message
+    : fallback;
+
 export const apiFetch = async <T>(
   path: string,
   { method = "GET", body, signal }: ApiFetchOptions = {}
