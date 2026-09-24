@@ -1,6 +1,6 @@
 # Copyright (C) 2025 Ahmet Yiğit Budak
 # License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl-3.0.html)
-from odoo import SUPERUSER_ID, api, fields, models, tools
+from odoo import SUPERUSER_ID, _, api, fields, models, tools
 
 from ..controllers.main import WP_ATTACHMENT_DOWNLOAD_PATH
 from .whatsapp_bus import queue_frontend_notification
@@ -208,6 +208,30 @@ class WhatsAppMessage(models.Model):
             "timestamp": self.timestamp,
             "reaction_emoji": self.reaction_emoji,
         }
+
+    def _preview_text(self):
+        """Return what the chat list shows for this message.
+
+        A message with media gets its type in front, as WhatsApp does, and
+        the type alone when it has no caption: photos, videos, voice
+        messages and stickers arrive without any text. Labels are in the
+        language of the environment (the backend's, for webhooks).
+        """
+        self.ensure_one()
+        attachment = self.attachment_id
+        if not attachment:
+            return self.body or False
+        mimetype = attachment.mimetype or ""
+        # WhatsApp sends photos as JPEG; WebP images are stickers
+        if mimetype == "image/webp":
+            return f"🙂 {self.body or _('Sticker')}"
+        if mimetype.startswith("image/"):
+            return f"📷 {self.body or _('Photo')}"
+        if mimetype.startswith("video/"):
+            return f"🎥 {self.body or _('Video')}"
+        if mimetype.startswith("audio/"):
+            return f"🎤 {self.body or _('Voice message')}"
+        return f"📄 {self.body or attachment.name}"
 
     @api.depends("create_uid")
     def _compute_is_automated(self):
