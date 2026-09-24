@@ -17,7 +17,6 @@ import TemplatePicker from "../message/template-picker";
 import DragDropZone from "../message/drag-drop-zone";
 import SuggestionChips from "../message/suggestion-chips";
 import { useTranslations } from "@/app/context/translation-provider";
-import { useContacts } from "@/app/hooks/use-contacts";
 import { useAuth } from "@/app/hooks/use-auth";
 import { useAppConfig } from "@/app/hooks/use-app-config";
 import {
@@ -74,7 +73,6 @@ export default function CurrentChat() {
   >(null);
   const { t, locale } = useTranslations();
   const { suggestionsEnabled } = useAppConfig();
-  const { contacts } = useContacts();
   const { sessionId } = useAuth();
 
   useEffect(() => {
@@ -246,7 +244,7 @@ export default function CurrentChat() {
           "x-session-id": sessionId ?? "",
         },
         body: JSON.stringify({
-          messages: messages.slice(-10), // Last 10 messages
+          threadId: Number(chatId),
           currentText: messageText.trim(),
         }),
       });
@@ -328,7 +326,7 @@ export default function CurrentChat() {
           "x-session-id": sessionId ?? "",
         },
         body: JSON.stringify({
-          messages: messages.slice(-10), // Last 10 messages
+          threadId: Number(chatId),
           currentText: originalText,
         }),
       });
@@ -444,67 +442,26 @@ export default function CurrentChat() {
     [locale, sessionId]
   );
 
-  // Generate suggestions with server-side caching
+  // Suggestions for the customer's latest message, cached on the server
   const generateSuggestions = useCallback(
     async (forceRefresh = false) => {
-      if (!suggestionsEnabled || messages.length === 0 || !chatId) {
-        return;
-      }
-
-      // Find the latest incoming message ID for cache key
-      const latestIncoming = [...messages]
-        .reverse()
-        .find((m) => !m.isSentFromUser);
-
-      const lastMessageId = latestIncoming?.id;
-      if (!lastMessageId) {
+      if (
+        !suggestionsEnabled ||
+        !chatId ||
+        !messages.some((m) => !m.isSentFromUser)
+      ) {
         return;
       }
 
       // Abort any previous ongoing request
-      if (suggestionsAbortControllerRef.current) {
-        suggestionsAbortControllerRef.current.abort();
-      }
-
-      // Create new AbortController for this request
+      suggestionsAbortControllerRef.current?.abort();
       const abortController = new AbortController();
       suggestionsAbortControllerRef.current = abortController;
 
       setIsSuggestionsLoading(true);
-
-      // If not forcing refresh, try to get from cache first
-      if (!forceRefresh) {
-        try {
-          const cacheResponse = await fetch(
-            `/api/ai/rag-suggestions?threadId=${chatId}&lastMessageId=${lastMessageId}`,
-            {
-              signal: abortController.signal,
-              headers: { "x-session-id": sessionId ?? "" },
-            }
-          );
-
-          if (cacheResponse.ok) {
-            const cacheData = await cacheResponse.json();
-            if (cacheData.cached && cacheData.suggestions?.length > 0) {
-              setSuggestions(cacheData.suggestions);
-              setIsSuggestionsLoading(false);
-              return; // Cache hit, done!
-            }
-          }
-        } catch (error) {
-          // If aborted, stop processing
-          if (error instanceof Error && error.name === "AbortError") {
-            return;
-          }
-          // Cache check failed, proceed with generation
-        }
+      if (forceRefresh) {
+        setSuggestions([]);
       }
-
-      // Cache miss or force refresh - generate new suggestions
-      setSuggestions([]);
-
-      const currentContact = contacts.find((c) => c.id === chatId);
-      const contactName = currentContact?.displayName || "Customer";
 
       try {
         const response = await fetch("/api/ai/rag-suggestions", {
@@ -513,14 +470,7 @@ export default function CurrentChat() {
             "Content-Type": "application/json",
             "x-session-id": sessionId ?? "",
           },
-          body: JSON.stringify({
-            threadId: chatId,
-            lastMessageId,
-            messages: messages.slice(-10),
-            contactName,
-            userName: "Support Agent",
-            forceRefresh,
-          }),
+          body: JSON.stringify({ threadId: Number(chatId), forceRefresh }),
           signal: abortController.signal,
         });
 
@@ -541,7 +491,7 @@ export default function CurrentChat() {
         }
       }
     },
-    [messages, contacts, chatId, sessionId, suggestionsEnabled]
+    [messages, chatId, sessionId, suggestionsEnabled]
   );
 
   // Handle suggestion selection - populate textarea

@@ -162,6 +162,23 @@ export const requireSession = (request: Request): Promise<AuthResult> =>
   resolveSession(request.headers.get("x-session-id"));
 
 /**
+ * Like requireSession, for features only WhatsApp agents may use (the AI
+ * routes spend the company's API key): the user must belong to a backend.
+ */
+export const requireAgent = async (request: Request): Promise<AuthResult> => {
+  const auth = await requireSession(request);
+  if ("response" in auth || auth.backendIds.length > 0) {
+    return auth;
+  }
+  return {
+    response: NextResponse.json(
+      { error: "No WhatsApp line is assigned to this user" },
+      { status: 403 }
+    ),
+  };
+};
+
+/**
  * Parse a positive integer id from a request, or return null.
  */
 export const parseId = (value: unknown): number | null => {

@@ -79,37 +79,41 @@ ODOO_JSONRPC_DATABASE=your_database
 
 # Optional: Odoo's websocket when it is not /websocket next to JSON-RPC
 ODOO_WEBSOCKET_URL=
+# Optional: the Odoo address users open, when JSON-RPC goes to an internal one
+ODOO_PUBLIC_URL=
 ```
 
 ### API Route Pattern
 
-Routes read the session from the `x-session-id` header, build a session-scoped
-Odoo client, and let Odoo's record rules decide what comes back. Never take a
-record id from the browser and read it with elevated rights.
+`requireSession(request)` reads the `x-session-id` header, checks the session
+with Odoo (cached for a few minutes with the user's WhatsApp backends) and
+returns a session-scoped client, or the 401 to send. Odoo's record rules then
+decide what comes back. `odooErrorResponse` turns a failed call into 401 for
+an expired session, Odoo's own message for a `UserError` or `AccessError`, and
+a generic message for anything else. Never take a record id from the browser
+and read it with elevated rights.
 
 ```typescript
 export async function GET(request: NextRequest) {
-  const sessionId = request.headers.get("x-session-id");
-  if (!sessionId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireSession(request);
+  if ("response" in auth) {
+    return auth.response;
   }
 
-  const session = createOdooClient().createSession(sessionId);
-
   try {
-    const data = await session.searchRead(/* ... */);
+    const data = await auth.session.searchRead(/* ... */);
     return NextResponse.json({ data });
   } catch (error) {
-    return NextResponse.json(
-      { error: (error as Error).message },
-      { status: 500 }
-    );
+    return odooErrorResponse(error, "Failed to load the data");
   }
 }
 ```
 
-Routes that reach an external service rather than Odoo (the `/api/ai/*` group)
-call `requireSession(request)` first.
+Routes that send take only the thread id and read the phone number and
+backend from the thread (`getThreadRecipient`). The AI routes call
+`requireAgent`, which also requires a WhatsApp backend, and read the
+conversation from Odoo (`loadConversation`) instead of taking it from the
+browser.
 
 ## Responsive Design
 
