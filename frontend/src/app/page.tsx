@@ -26,6 +26,7 @@ import {
 } from "./context/translation-provider";
 import { ThemeProvider } from "./context/theme-provider";
 import ConnectionProvider from "./context/connection-provider";
+import QueryProvider from "./context/query-provider";
 import ConnectionOverlay from "./components/connection-overlay";
 import {
   MobileNavigationProvider,
@@ -411,7 +412,9 @@ export default function Home() {
         <TabSyncProvider>
           <AuthProvider>
             <ConnectionProvider>
-              <AuthenticatedApp />
+              <QueryProvider>
+                <AuthenticatedApp />
+              </QueryProvider>
             </ConnectionProvider>
           </AuthProvider>
         </TabSyncProvider>
