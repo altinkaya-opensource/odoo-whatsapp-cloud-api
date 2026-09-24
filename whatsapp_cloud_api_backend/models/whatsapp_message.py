@@ -3,7 +3,6 @@
 from odoo import SUPERUSER_ID, api, fields, models, tools
 
 from ..controllers.main import WP_ATTACHMENT_DOWNLOAD_PATH
-from .frontend_webhook import WebhookSender
 from .whatsapp_bus import queue_frontend_notification
 
 # Changes the chat view shows: sent to the frontend as "updated"
@@ -136,11 +135,6 @@ class WhatsAppMessage(models.Model):
         )
     ]
 
-    def send_webhook_payload(self, event_type):
-        """Send the message data to the frontend webhook."""
-        for message in self:
-            WebhookSender.send_message_webhook_payload(message, event_type)
-
     def init(self):
         """Index incoming messages by thread for the unread counts."""
         res = super().init()
@@ -156,9 +150,6 @@ class WhatsAppMessage(models.Model):
     @api.model_create_multi
     def create(self, vals_list):
         res = super().create(vals_list)
-
-        # Send webhook payload for message creation
-        res.with_delay().send_webhook_payload("message.created")
         queue_frontend_notification(res, "created")
 
         return res
@@ -167,8 +158,6 @@ class WhatsAppMessage(models.Model):
         res = super().write(vals)
         # A reaction is stored on the message it targets, not as a new record,
         # so the frontend only learns about it through an update event.
-        if "reaction_emoji" in vals:
-            self.with_delay().send_webhook_payload("message.updated")
         if FRONTEND_MESSAGE_FIELDS.intersection(vals):
             queue_frontend_notification(self, "updated")
         return res

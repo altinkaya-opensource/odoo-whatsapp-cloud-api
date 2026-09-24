@@ -7,7 +7,6 @@ import time
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError
 
-from .frontend_webhook import WebhookSender
 from .whatsapp_bus import queue_frontend_notification
 
 # Fields of the chat list: chatbot bookkeeping writes do not notify
@@ -109,11 +108,6 @@ class WhatsAppThread(models.Model):
             "A thread already exists for this backend and phone number.",
         )
     ]
-
-    def send_webhook_payload(self, event_type):
-        """Send the thread data to the frontend webhook."""
-        for thread in self:
-            WebhookSender.send_thread_webhook_payload(thread, event_type)
 
     @api.depends("partner_id", "partner_id.avatar_256")
     def _compute_has_avatar(self):
@@ -274,11 +268,6 @@ class WhatsAppThread(models.Model):
                 vals.get("partner_id"), vals.get("phone_number")
             )
         thread = super().create(vals)
-
-        # Push the new thread to
-        # frontend webhook
-
-        thread.with_delay().send_webhook_payload("thread.created")
         queue_frontend_notification(thread, "created")
 
         return thread
@@ -295,9 +284,6 @@ class WhatsAppThread(models.Model):
                 if new_name != thread.name:
                     super(WhatsAppThread, thread).write({"name": new_name})
 
-        # Push the updated thread to
-        # frontend webhook
-        self.with_delay().send_webhook_payload("thread.updated")
         if FRONTEND_THREAD_FIELDS.intersection(vals):
             queue_frontend_notification(self, "updated")
 

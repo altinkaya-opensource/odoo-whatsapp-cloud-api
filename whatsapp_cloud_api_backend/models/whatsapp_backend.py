@@ -86,13 +86,11 @@ class WhatsAppBackend(models.Model):
         default=lambda self: self.env.company,
     )
 
+    # Only the frontend's address is used now (SSO links); the field name
+    # stays from when Odoo posted webhooks to /api/webhooks/whatsapp.
     frontend_webhook_url = fields.Char(
-        string="Frontend Webhook URL",
-        help="URL to send WhatsApp thread and message updates to the frontend.",
-    )
-    frontend_webhook_secret = fields.Char(
-        help="Secret token to authenticate frontend webhook requests.",
-        groups=SECRET_GROUPS,
+        string="Frontend URL",
+        help="Address of the WhatsApp frontend, used to open it from Odoo.",
     )
 
     # Chatbot configuration

@@ -10,7 +10,6 @@ CREDENTIAL_FIELDS = (
     "api_token",
     "app_secret",
     "webhook_secret",
-    "frontend_webhook_secret",
 )
 
 
@@ -36,7 +35,6 @@ class TestWhatsAppSecurity(TransactionCase):
                 "api_token": "security-test-token",
                 "phone_number_id": "security-test",
                 "app_secret": "security-test-app-secret",
-                "frontend_webhook_secret": "security-test-frontend-secret",
                 "user_ids": [(6, 0, cls.agent.ids)],
             }
         )
