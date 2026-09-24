@@ -79,9 +79,15 @@ export const formatFileSize = (bytes: number): string => {
   return `${parseFloat((bytes / 1024 ** index).toFixed(1))} ${sizes[index]}`;
 };
 
-/** The attachment through the app's proxy, which checks access in Odoo. */
+/**
+ * The attachment through the app's proxy, which checks access in Odoo. A
+ * photo still being sent is shown from the browser's copy, a blob: URL the
+ * proxy would refuse.
+ */
 export const attachmentDownloadUrl = (attachment: Attachment) =>
-  `/api/attachments/download?url=${encodeURIComponent(attachment.url)}`;
+  attachment.url.startsWith("blob:")
+    ? attachment.url
+    : `/api/attachments/download?url=${encodeURIComponent(attachment.url)}`;
 
 export default function AttachmentDisplay({
   attachment,
