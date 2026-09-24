@@ -323,7 +323,7 @@ class WhatsAppThread(models.Model):
         updates = {
             "last_message_id": message_record.id,
             "last_message_date": message_record.create_date,
-            "last_message_preview": message_record.body or False,
+            "last_message_preview": message_record._preview_text(),
         }
         if message_record.direction == "incoming":
             updates["last_incoming_message_id"] = message_record.id

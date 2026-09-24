@@ -1420,6 +1420,13 @@ msgstr "WhatsApp API'yi kullanmak için telefon numarası ID gereklidir."
 
 #. module: whatsapp_cloud_api_backend
 #. odoo-python
+#: code:addons/whatsapp_cloud_api_backend/models/whatsapp_message.py:0
+#, python-format
+msgid "Photo"
+msgstr "Fotoğraf"
+
+#. module: whatsapp_cloud_api_backend
+#. odoo-python
 #: code:addons/whatsapp_cloud_api_backend/controllers/webhook.py:0
 #: code:addons/whatsapp_cloud_api_backend/models/whatsapp_webhook.py:0
 #, python-format
@@ -1807,6 +1814,13 @@ msgstr "Adım Adı"
 #: model:ir.model.fields,field_description:whatsapp_cloud_api_backend.field_whatsapp_chatbot_script__step_type
 msgid "Step Type"
 msgstr "Adım Tipi"
+
+#. module: whatsapp_cloud_api_backend
+#. odoo-python
+#: code:addons/whatsapp_cloud_api_backend/models/whatsapp_message.py:0
+#, python-format
+msgid "Sticker"
+msgstr "Çıkartma"
 
 #. module: whatsapp_cloud_api_backend
 #: model:ir.model.fields,field_description:whatsapp_cloud_api_backend.field_whatsapp_thread__name
@@ -2220,6 +2234,7 @@ msgstr "Değişkenler Ayrıştırıldı"
 
 #. module: whatsapp_cloud_api_backend
 #. odoo-python
+#: code:addons/whatsapp_cloud_api_backend/models/whatsapp_message.py:0
 #: code:addons/whatsapp_cloud_api_backend/models/whatsapp_thread.py:0
 #, python-format
 msgid "Video"
@@ -2231,6 +2246,13 @@ msgstr "Video"
 #, python-format
 msgid "Video message requires either an attachment, media ID, or a link."
 msgstr "Video mesajı için ek dosya, medya ID veya bağlantı gereklidir."
+
+#. module: whatsapp_cloud_api_backend
+#. odoo-python
+#: code:addons/whatsapp_cloud_api_backend/models/whatsapp_message.py:0
+#, python-format
+msgid "Voice message"
+msgstr "Sesli mesaj"
 
 #. module: whatsapp_cloud_api_backend
 #: model:ir.model.fields,help:whatsapp_cloud_api_backend.field_whatsapp_backend__waba_id
