@@ -3,94 +3,51 @@ import {
   PropsWithChildren,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
+import {
+  InfiniteData,
+  keepPreviousData,
+  QueryClient,
+  useInfiniteQuery,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useAuth } from "../hooks/use-auth";
-import { useSSE } from "../hooks/use-sse";
-import { useThreadsPoller } from "../hooks/use-threads-poller";
-import { useConnection } from "./connection-provider";
+import { useRealtime } from "../hooks/use-realtime";
+import { useTranslations } from "./translation-provider";
+import { apiFetch } from "../lib/api-client";
 import { buildPartnerAvatarUrl } from "../lib/odoo/avatar-url";
-import { notifyIncomingMessage, setUnreadBadge } from "../lib/notifications";
+import {
+  isActiveThread,
+  notifyIncomingMessage,
+  setUnreadBadge,
+} from "../lib/notifications";
+import { upsertCachedMessages } from "../lib/whatsapp/message-cache";
+import {
+  compareByRecency,
+  mergeChat,
+  toChat,
+  toMessage,
+  type OdooMessageRecord,
+  type OdooThreadRecord,
+} from "../lib/whatsapp/records";
+import type { Chat, MessageSearchResult } from "../lib/whatsapp/types";
+
+export type {
+  Attachment,
+  AttachmentType,
+  Chat,
+  Message,
+  MessageSearchResult,
+} from "../lib/whatsapp/types";
 
 export enum Filters {
   ALL = "all",
   UNREAD = "unread",
-  FAVORITES = "favorites",
-  GROUPS = "groups",
 }
-
-export type ReactionType = {
-  emoji: string;
-  count: number;
-};
-
-export type AttachmentType = "image" | "video" | "audio" | "document";
-
-export type Attachment = {
-  id: number;
-  name: string;
-  mimetype: string;
-  url: string;
-  file_size: number;
-  type?: AttachmentType;
-};
-
-export type Message = {
-  id?: string;
-  contactId: string;
-  message: string;
-  timestamp: number;
-  isSentFromUser: boolean;
-  read?: boolean;
-  sent?: boolean;
-  delivered?: boolean;
-  reactions?: ReactionType[];
-  error?: string;
-  userId?: number | null;
-  whatsappId?: string | null;
-  attachment?: Attachment;
-  reactionEmoji?: string | null;
-  replyTo?: {
-    messageId: string;
-    message: string;
-    contactId: string;
-    senderIsUser: boolean;
-  };
-};
-
-export type Chat = {
-  id: string;
-  contactId: string | string[];
-  groupName?: string;
-  groupAvatar?: string;
-  threadName?: string;
-  phoneNumber?: string | null;
-  backendId?: number | null;
-  partnerId?: number | null; // Partner ID for opening in Odoo
-  partnerName?: string | null; // Partner display name from Odoo
-  partnerAvatar?: string | null; // Partner avatar URL from Odoo
-  hasAvatar?: boolean; // Partner has a real avatar, not a generated one
-  lastMessagePreview?: string;
-  lastMessageAt?: number | null;
-  unreadCount?: number;
-  read: boolean;
-  group: boolean;
-  favorite: boolean;
-  messages: Message[];
-};
-
-export type MessageSearchResult = {
-  threadId: number;
-  threadName: string;
-  phoneNumber: string | null;
-  backendId: number | null;
-  partnerId: number | null;
-  partnerName: string | null;
-  messageId: number;
-  messageBody: string;
-  messageTimestamp: number;
-};
 
 export type Chats = {
   complete: Chat[];
@@ -130,13 +87,87 @@ export const ChatsContext = createContext<
 const THREADS_PAGE_SIZE = 30;
 const MESSAGE_SEARCH_PAGE_SIZE = 20;
 const CONTACT_SEARCH_PAGE_SIZE = 5;
+const SEARCH_DEBOUNCE_MS = 300;
+// Realtime events carry changes; this only repairs what a lost event missed
+const POLL_INTERVAL_MS = 10 * 60 * 1000;
 
-// Newest first, then the higher id. The list only gets last_message_date to
-// the second, and bulk sends (cargo notifications) put several threads in
-// the same second; without the id they swapped places on every re-sort.
-const compareByRecency = (a: Chat, b: Chat) =>
-  (b.lastMessageAt || 0) - (a.lastMessageAt || 0) ||
-  Number(b.id) - Number(a.id);
+type ThreadPage = { chats: Chat[]; hasMore: boolean };
+type ThreadsData = InfiniteData<ThreadPage, number>;
+type ThreadsKey = [
+  "threads",
+  { backendId: number | null; unread: boolean; search: string },
+];
+
+/** Apply a thread change to every cached chat list. */
+const upsertCachedChat = (queryClient: QueryClient, update: Chat) => {
+  const lists = queryClient.getQueriesData<ThreadsData>({
+    queryKey: ["threads"],
+  });
+  for (const [queryKey, data] of lists) {
+    if (!data) {
+      continue;
+    }
+    const isKnown = data.pages.some((page) =>
+      page.chats.some((chat) => chat.id === update.id)
+    );
+    // A search keeps its own results; other lists pick up new threads
+    const { search } = (queryKey as ThreadsKey)[1];
+    if (!isKnown && search) {
+      continue;
+    }
+    queryClient.setQueryData<ThreadsData>(queryKey, {
+      ...data,
+      pages: data.pages.map((page, index) => {
+        if (isKnown) {
+          return {
+            ...page,
+            chats: page.chats.map((chat) =>
+              chat.id === update.id ? mergeChat(chat, update) : chat
+            ),
+          };
+        }
+        return index === 0
+          ? { ...page, chats: [mergeChat(undefined, update), ...page.chats] }
+          : page;
+      }),
+    });
+  }
+};
+
+/** Change a chat that is already listed, wherever it is cached. */
+const patchCachedChat = (
+  queryClient: QueryClient,
+  chatId: string,
+  patch: (chat: Chat) => Chat
+) => {
+  queryClient.setQueriesData<ThreadsData>({ queryKey: ["threads"] }, (data) =>
+    data
+      ? {
+          ...data,
+          pages: data.pages.map((page) => ({
+            ...page,
+            chats: page.chats.map((chat) =>
+              chat.id === chatId ? patch(chat) : chat
+            ),
+          })),
+        }
+      : data
+  );
+};
+
+const toSearchResult = (
+  record: Record<string, unknown>
+): MessageSearchResult => ({
+  threadId: record.thread_id as number,
+  threadName: record.thread_name as string,
+  phoneNumber: (record.phone_number as string) ?? null,
+  backendId: (record.backend_id as number) ?? null,
+  partnerId: (record.partner_id as number) ?? null,
+  partnerName: (record.partner_name as string) ?? null,
+  messageId: record.message_id as number,
+  messageBody: record.message_body as string,
+  messageTimestamp: record.message_timestamp as number,
+});
 
 type ChatsProviderProps = PropsWithChildren<{
   includeThreadId?: string | null;
@@ -150,864 +181,289 @@ export default function ChatsProvider({
   const [selectedBackendId, setSelectedBackendId] = useState<number | null>(
     null
   ); // null = all backends
-  const [chats, setChats] = useState<Chats>({
-    complete: [],
-    filtered: [],
-    isLoading: false,
-  });
-  const [hasMoreThreads, setHasMoreThreads] = useState(true);
-  const [isLoadingMoreThreads, setIsLoadingMoreThreads] = useState(false);
-  const [nextThreadsOffset, setNextThreadsOffset] = useState(0);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState<string>("");
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const debouncedSearchQueryRef = useRef<string>("");
-  const [messageSearchResults, setMessageSearchResults] = useState<
-    MessageSearchResult[]
-  >([]);
-  const [isSearchingMessages, setIsSearchingMessages] = useState(false);
-  const [hasMoreMessageResults, setHasMoreMessageResults] = useState(false);
-  const [isLoadingMoreMessages, setIsLoadingMoreMessages] = useState(false);
-  const [nextMessageSearchOffset, setNextMessageSearchOffset] = useState(0);
-  const { sessionId, backendId: authBackendId } = useAuth();
-  const { reportApiError, reportConnectionRestored } = useConnection();
-  const isFetchingRef = useRef(false);
-  const latestRequestIdRef = useRef(0);
-  const applyFilterRef = useRef<(chats: Chat[]) => Chat[]>((chats) => chats);
-  const chatsRef = useRef<Chat[]>([]);
-  const [serverUnreadCount, setServerUnreadCount] = useState<number | null>(
-    null
-  );
-  const [odooBaseUrl, setOdooBaseUrl] = useState<string | null>(null);
+  const { isAuthenticated } = useAuth();
+  const { t } = useTranslations();
+  const queryClient = useQueryClient();
+  const search = debouncedSearchQuery.trim();
 
-  useEffect(() => {
-    debouncedSearchQueryRef.current = debouncedSearchQuery;
-  }, [debouncedSearchQuery]);
-
-  // Message handlers read the thread list from a ref so they never depend on
-  // the render that produced it.
-  useEffect(() => {
-    chatsRef.current = chats.complete;
-  }, [chats.complete]);
-
-  // Fetch Odoo base URL for avatar generation
-  useEffect(() => {
-    fetch("/api/config")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.odooBaseUrl) {
-          setOdooBaseUrl(data.odooBaseUrl);
-        }
-      })
-      .catch(() => {
-        // Silently fail - avatars just won't display
-      });
-  }, []);
-
-  // SSE callbacks for real-time thread updates
-  const handleThreadsUpdate = useCallback(
-    (threads: unknown[]) => {
-      // Process new threads from SSE
-      const odooThreads = threads as Array<{
-        id: number;
-        name: string;
-        last_message_date: string | null;
-        last_message_preview: string | null;
-        phone_number: string | null;
-        backend_id: number | null;
-        partner_id?: [number, string] | number | null | false;
-        write_date: string;
-        unread_count?: number;
-        has_avatar?: boolean;
-      }>;
-
-      setChats((prev) => {
-        // Create a map of existing chats for efficient lookup
-        const existingChatsMap = new Map(
-          prev.complete.map((chat) => [chat.id, chat])
-        );
-
-        // Process updates from SSE
-        odooThreads.forEach((thread) => {
-          const threadId = thread.id.toString();
-          const existingChat = existingChatsMap.get(threadId);
-
-          if (existingChat) {
-            // Update existing chat, preserving important data like messages
-            const newTimestamp = thread.last_message_date
-              ? new Date(thread.last_message_date + "Z").getTime()
-              : existingChat.lastMessageAt;
-
-            // Thread events are fanned out to every user of the backend, so
-            // they never carry an unread count; only the per-user thread
-            // fetch does. Keep the local count when it is absent.
-            const newUnreadCount =
-              thread.unread_count ?? existingChat.unreadCount ?? 0;
-            const hasUnread = newUnreadCount > 0;
-
-            // Extract partner ID and display name from Odoo tuple
-            const partnerId =
-              Array.isArray(thread.partner_id) && thread.partner_id.length > 0
-                ? thread.partner_id[0]
-                : typeof thread.partner_id === "number"
-                  ? thread.partner_id
-                  : null;
-            const partnerName =
-              Array.isArray(thread.partner_id) && thread.partner_id.length > 1
-                ? thread.partner_id[1]
-                : null;
-
-            // Always build partner avatar URL if we have partnerId and odooBaseUrl
-            // The component will decide whether to use it based on hasAvatar flag
-            const hasAvatar = thread.has_avatar === true;
-            const partnerAvatar =
-              partnerId && odooBaseUrl
-                ? buildPartnerAvatarUrl(odooBaseUrl, partnerId, sessionId)
-                : null;
-
-            existingChatsMap.set(threadId, {
-              ...existingChat,
-              lastMessagePreview:
-                thread.last_message_preview || existingChat.lastMessagePreview,
-              lastMessageAt: newTimestamp,
-              threadName: thread.name || existingChat.threadName,
-              partnerId: partnerId ?? existingChat.partnerId,
-              partnerName: partnerName ?? existingChat.partnerName,
-              // Keep existing avatar URL if new one is null (odooBaseUrl not loaded yet)
-              partnerAvatar:
-                partnerAvatar !== null
-                  ? partnerAvatar
-                  : existingChat.partnerAvatar,
-              hasAvatar,
-              unreadCount: newUnreadCount,
-              read: !hasUnread,
-            });
-          } else {
-            // Add new chat
-            const newTimestamp = thread.last_message_date
-              ? new Date(thread.last_message_date + "Z").getTime()
-              : Date.now();
-            const newUnreadCount = thread.unread_count ?? 0;
-
-            // Extract partner ID and display name from Odoo tuple
-            const partnerId =
-              Array.isArray(thread.partner_id) && thread.partner_id.length > 0
-                ? thread.partner_id[0]
-                : typeof thread.partner_id === "number"
-                  ? thread.partner_id
-                  : null;
-            const partnerName =
-              Array.isArray(thread.partner_id) && thread.partner_id.length > 1
-                ? thread.partner_id[1]
-                : null;
-
-            // Always build partner avatar URL if we have partnerId and odooBaseUrl
-            // The component will decide whether to use it based on hasAvatar flag
-            const hasAvatar = thread.has_avatar === true;
-            const partnerAvatar =
-              partnerId && odooBaseUrl
-                ? buildPartnerAvatarUrl(odooBaseUrl, partnerId, sessionId)
-                : null;
-
-            existingChatsMap.set(threadId, {
-              id: threadId,
-              contactId: thread.phone_number || "",
-              threadName: thread.name || undefined,
-              phoneNumber: thread.phone_number || null,
-              backendId: thread.backend_id || null,
-              partnerId,
-              partnerName,
-              partnerAvatar,
-              hasAvatar,
-              lastMessagePreview: thread.last_message_preview || "",
-              lastMessageAt: newTimestamp,
-              unreadCount: newUnreadCount,
-              groupName: undefined,
-              groupAvatar: undefined,
-              read: newUnreadCount === 0,
-              favorite: false,
-              group: false,
-              messages: [],
-            });
-          }
-        });
-
-        // Sort by last message timestamp (only when not searching)
-        const updatedComplete = Array.from(existingChatsMap.values());
-        if (!debouncedSearchQueryRef.current.trim()) {
-          updatedComplete.sort(compareByRecency);
-        }
-
-        return {
-          ...prev,
-          complete: updatedComplete,
-          // Same filter as everywhere else, so a live update cannot slip a
-          // thread from another phone number into a filtered list.
-          filtered: applyFilterRef.current(updatedComplete),
-          isLoading: false,
-        };
-      });
-    },
-    [odooBaseUrl, sessionId]
-  );
-
-  // Handle message arrivals to update thread list (unread count, preview, timestamp)
-  // This provides immediate optimistic updates, with polling as ground truth sync
-  const handleMessageArrival = useCallback(
-    (messages: unknown[], threadId: string) => {
-      const odooMessages = messages as Array<{
-        id: number;
-        body: string | null;
-        direction: string;
-        timestamp: number;
-      }>;
-
-      if (odooMessages.length === 0) return;
-
-      // The thread may not be loaded yet (older than the first page, or new).
-      // Still alert the user - only the title falls back.
-      const chat = chatsRef.current.find((entry) => entry.id === threadId);
-      const threadName =
-        chat?.partnerName || chat?.threadName || chat?.phoneNumber || null;
-
-      // Notify outside of the state updater: this is the only place that
-      // alerts the user about a message, and it must run exactly once per
-      // message even if React re-invokes the updater.
-      let unreadIncrement = 0;
-      odooMessages.forEach((message) => {
-        if (message.direction !== "incoming") {
-          return;
-        }
-
-        const { isNew, interrupted } = notifyIncomingMessage({
-          threadId,
-          messageId: message.id,
-          title: threadName ?? "WhatsApp",
-          body: message.body || "New message",
-        });
-
-        // A message that arrives in the thread the user is reading is marked
-        // read straight away, so counting it would only make the badge flash.
-        if (isNew && interrupted) {
-          unreadIncrement += 1;
-        }
-      });
-
-      const latestMessage = odooMessages[odooMessages.length - 1];
-
-      setChats((prev) => {
-        const existingChatsMap = new Map(
-          prev.complete.map((entry) => [entry.id, entry])
-        );
-        const current = existingChatsMap.get(threadId);
-
-        if (!current) {
-          return prev;
-        }
-
-        const newUnreadCount = (current.unreadCount || 0) + unreadIncrement;
-
-        existingChatsMap.set(threadId, {
-          ...current,
-          lastMessagePreview: latestMessage.body || current.lastMessagePreview,
-          lastMessageAt: latestMessage.timestamp * 1000,
-          unreadCount: newUnreadCount,
-          read: newUnreadCount === 0, // Thread is "read" only when unread count is 0
-        });
-
-        // Rebuild array and sort by lastMessageAt (only when not searching)
-        const updatedChats = Array.from(existingChatsMap.values());
-        if (!debouncedSearchQueryRef.current.trim()) {
-          updatedChats.sort(compareByRecency);
-        }
-
-        return {
-          ...prev,
-          complete: updatedChats,
-        };
-      });
-    },
+  const avatarUrl = useCallback(
+    (partnerId: number) => buildPartnerAvatarUrl(partnerId),
     []
   );
 
-  // Initialize SSE connection for threads
-  const { isConnected: sseConnected } = useSSE(
+  const threadsKey: ThreadsKey = [
+    "threads",
     {
-      onThreadsUpdate: handleThreadsUpdate,
-      // message.created bumps the unread count as it arrives; the 10-minute
-      // poll and /api/threads/unread-count correct any drift.
-      onMessagesUpdate: handleMessageArrival,
-      onError: (error) => {
-        reportApiError(error);
-      },
-      onReconnect: () => {
-        reportConnectionRestored();
-      },
+      backendId: selectedBackendId,
+      unread: filter === Filters.UNREAD,
+      search,
     },
-    {
-      enabled: !!sessionId,
-      threadId: null, // Subscribe to GLOBAL messages and thread updates
-    }
-  );
-
-  // Polling fallback: covers threads the user never opened when SSE drops
-  useThreadsPoller(
-    {
-      onThreadsFound: (threads) => {
-        // Reuse the same handler as SSE - it already handles thread merging
-        handleThreadsUpdate(threads);
-      },
-      onError: (error) => {
-        // Don't report polling errors as aggressively as SSE errors
-        // Polling is a fallback mechanism, not the primary delivery method
-        console.warn(`[ChatsProvider] Thread polling error:`, error.message);
-      },
-      onPollComplete: () => {
-        // Report successful poll as connection restored
-        reportConnectionRestored();
-      },
-    },
-    {
-      enabled: !!sessionId,
-      interval: 600000, // 10 minutes
-    }
-  );
-
-  const applyFilter = useCallback(
-    (completeChats: Chat[]) => {
-      return completeChats.filter((chat) => {
-        // First check backend filter
-        if (selectedBackendId !== null) {
-          if (chat.backendId !== selectedBackendId) {
-            return false;
-          }
-        }
-
-        // Then apply status filters
-        if (filter === Filters.UNREAD && chat.read === false) {
-          return true;
-        }
-        if (filter === Filters.FAVORITES && chat.favorite === true) {
-          return true;
-        }
-        if (filter === Filters.GROUPS && chat.group === true) {
-          return true;
-        }
-        if (filter === Filters.ALL) {
-          return true;
-        }
-        return false;
+  ];
+  const threadsQuery = useInfiniteQuery({
+    queryKey: threadsKey,
+    enabled: isAuthenticated,
+    initialPageParam: 0,
+    placeholderData: keepPreviousData,
+    refetchInterval: POLL_INTERVAL_MS,
+    queryFn: async ({ pageParam, signal }): Promise<ThreadPage> => {
+      const pageSize = search ? CONTACT_SEARCH_PAGE_SIZE : THREADS_PAGE_SIZE;
+      const params = new URLSearchParams({
+        limit: String(pageSize),
+        offset: String(pageParam),
       });
-    },
-    [filter, selectedBackendId]
-  );
-
-  useEffect(() => {
-    applyFilterRef.current = applyFilter;
-  }, [applyFilter]);
-
-  const updateFilter = (filter: string) => {
-    setFilter(filter as Filters);
-  };
-
-  // Search query handler with debouncing
-  const updateSearchQuery = useCallback((query: string) => {
-    setSearchQuery(query);
-
-    // Clear existing timeout
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-    }
-
-    // Debounce the actual search (300ms delay)
-    searchTimeoutRef.current = setTimeout(() => {
-      setDebouncedSearchQuery(query);
-      // Reset pagination when search changes
-      setNextThreadsOffset(0);
-      setHasMoreThreads(true);
-    }, 300);
-  }, []);
-
-  // Clear search function
-  const clearSearch = useCallback(() => {
-    setSearchQuery("");
-    setDebouncedSearchQuery("");
-    setMessageSearchResults([]);
-    setHasMoreMessageResults(false);
-    setIsLoadingMoreMessages(false);
-    setNextMessageSearchOffset(0);
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-    }
-    setNextThreadsOffset(0);
-    setHasMoreThreads(true);
-  }, []);
-
-  const loadMoreMessageResults = useCallback(() => {
-    if (
-      !sessionId ||
-      isLoadingMoreMessages ||
-      !hasMoreMessageResults ||
-      !debouncedSearchQuery.trim()
-    ) {
-      return;
-    }
-
-    setIsLoadingMoreMessages(true);
-    const url = `/api/messages/search?search=${encodeURIComponent(debouncedSearchQuery.trim())}&limit=${MESSAGE_SEARCH_PAGE_SIZE}&offset=${nextMessageSearchOffset}`;
-
-    fetch(url, {
-      headers: { "x-session-id": sessionId },
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        const results = Array.isArray(data?.messages) ? data.messages : [];
-        const mapped = results.map((r: Record<string, unknown>) => ({
-          threadId: r.thread_id as number,
-          threadName: r.thread_name as string,
-          phoneNumber: (r.phone_number as string) ?? null,
-          backendId: (r.backend_id as number) ?? null,
-          partnerId: (r.partner_id as number) ?? null,
-          partnerName: (r.partner_name as string) ?? null,
-          messageId: r.message_id as number,
-          messageBody: r.message_body as string,
-          messageTimestamp: r.message_timestamp as number,
-        }));
-        setMessageSearchResults((prev) => [...prev, ...mapped]);
-        setNextMessageSearchOffset((prev) => prev + MESSAGE_SEARCH_PAGE_SIZE);
-        setHasMoreMessageResults(results.length >= MESSAGE_SEARCH_PAGE_SIZE);
-      })
-      .catch(() => {
-        setHasMoreMessageResults(false);
-      })
-      .finally(() => {
-        setIsLoadingMoreMessages(false);
-      });
-  }, [
-    sessionId,
-    isLoadingMoreMessages,
-    hasMoreMessageResults,
-    debouncedSearchQuery,
-    nextMessageSearchOffset,
-  ]);
-
-  const updateThreadPreview = useCallback(
-    (chatId: string, preview: string, timestamp: number) => {
-      setChats((prev) => {
-        const updatedComplete = prev.complete.map((chat) => {
-          if (chat.id === chatId) {
-            return {
-              ...chat,
-              lastMessagePreview: preview,
-              lastMessageAt: timestamp,
-            };
-          }
-          return chat;
-        });
-
-        // Sort by lastMessageAt to put the updated thread at the top
-        // Sort by lastMessageAt to put the updated thread at the top (only when not searching)
-        const sortedComplete = debouncedSearchQueryRef.current.trim()
-          ? updatedComplete
-          : updatedComplete.sort(compareByRecency);
-
-        // Apply current filters to the updated complete list
-        const filteredChats = applyFilter(sortedComplete);
-
-        return {
-          ...prev,
-          complete: sortedComplete,
-          filtered: filteredChats,
-        };
-      });
-    },
-    [applyFilter]
-  );
-
-  const markChatAsRead = useCallback(
-    (chatId: string) => {
-      setChats((prev) => {
-        const updatedComplete = prev.complete.map((chat) => {
-          if (chat.id === chatId) {
-            // Also reset unread count when marking as read
-            return { ...chat, read: true, unreadCount: 0 };
-          }
-          return chat;
-        });
-
-        const filteredChats = applyFilter(updatedComplete);
-
-        return {
-          ...prev,
-          complete: updatedComplete,
-          filtered: filteredChats,
-        };
-      });
-    },
-    [applyFilter]
-  );
-
-  type ThreadRecord = {
-    id: number;
-    name: string;
-    last_message_date: string | null;
-    last_message_preview: string | null;
-    phone_number?: string | null;
-    backend_id?: [number, string] | number | null | false;
-    partner_id?: [number, string] | number | null | false;
-    unread_count?: number;
-    has_avatar?: boolean;
-  };
-
-  const transformThreads = useCallback(
-    (threads: ThreadRecord[]): Chat[] => {
-      return threads.map((thread) => {
-        const chatId = String(thread.id);
-        const preview = thread.last_message_preview ?? "";
-        const timestamp = thread.last_message_date
-          ? new Date(thread.last_message_date + "Z").getTime()
-          : null;
-        const backendId =
-          Array.isArray(thread.backend_id) && thread.backend_id.length > 0
-            ? thread.backend_id[0]
-            : typeof thread.backend_id === "number"
-              ? thread.backend_id
-              : (authBackendId ?? null);
-
-        // Extract partner ID and display name from Odoo tuple
-        const partnerId =
-          Array.isArray(thread.partner_id) && thread.partner_id.length > 0
-            ? thread.partner_id[0]
-            : typeof thread.partner_id === "number"
-              ? thread.partner_id
-              : null;
-        const partnerName =
-          Array.isArray(thread.partner_id) && thread.partner_id.length > 1
-            ? thread.partner_id[1]
-            : null;
-
-        // Always build partner avatar URL if we have partnerId and odooBaseUrl
-        // The component will decide whether to use it based on hasAvatar flag
-        const hasAvatar = thread.has_avatar === true;
-        const partnerAvatar =
-          partnerId && odooBaseUrl
-            ? buildPartnerAvatarUrl(odooBaseUrl, partnerId, sessionId)
-            : null;
-
-        const phoneNumber = thread.phone_number;
-        const unreadCount = thread.unread_count || 0;
-
-        const messages: Message[] = preview
-          ? [
-              {
-                id: `thread-${thread.id}-preview`,
-                contactId: chatId,
-                message: preview,
-                timestamp: timestamp ?? Date.now(),
-                isSentFromUser: false,
-                whatsappId: null,
-              },
-            ]
-          : [];
-
-        return {
-          id: chatId,
-          contactId: chatId,
-          threadName: thread.name,
-          phoneNumber,
-          backendId,
-          partnerId,
-          partnerName,
-          partnerAvatar,
-          hasAvatar,
-          lastMessagePreview: preview,
-          lastMessageAt: timestamp,
-          unreadCount,
-          read: unreadCount === 0,
-          group: false,
-          favorite: false,
-          messages,
-        };
-      });
-    },
-    [authBackendId, odooBaseUrl, sessionId]
-  );
-
-  const fetchThreads = useCallback(
-    async ({
-      showLoading = false,
-      append = false,
-      offset = 0,
-    }: {
-      showLoading?: boolean;
-      append?: boolean;
-      offset?: number;
-    } = {}) => {
-      if (!sessionId) {
-        return;
+      if (includeThreadId && pageParam === 0) {
+        params.set("includeThreadId", includeThreadId);
       }
-
-      // Only one page-in-flight at a time for "load more"; a filter change
-      // must not be dropped, so it supersedes the request in flight instead.
-      if (append && isFetchingRef.current) {
-        return;
+      if (search) {
+        params.set("search", search);
       }
-
-      const requestId = ++latestRequestIdRef.current;
-      isFetchingRef.current = true;
-      if (showLoading) {
-        setChats((prev) => ({ ...prev, isLoading: true }));
+      // Odoo filters, so a page is a full page of matching threads
+      if (selectedBackendId !== null) {
+        params.set("backendId", String(selectedBackendId));
       }
-      if (append) {
-        setIsLoadingMoreThreads(true);
+      if (filter === Filters.UNREAD) {
+        params.set("unread", "1");
       }
-
-      try {
-        // Build URL with optional includeThreadId and search parameters
-        const pageSize =
-          debouncedSearchQuery.trim().length > 0
-            ? CONTACT_SEARCH_PAGE_SIZE
-            : THREADS_PAGE_SIZE;
-        let url = `/api/threads?limit=${pageSize}&offset=${offset}`;
-        if (includeThreadId && offset === 0) {
-          url += `&includeThreadId=${encodeURIComponent(includeThreadId)}`;
-        }
-        if (debouncedSearchQuery.trim().length > 0) {
-          url += `&search=${encodeURIComponent(debouncedSearchQuery.trim())}`;
-        }
-        // Let Odoo do the filtering: a full page of threads for the selected
-        // phone number, instead of whatever survives filtering 30 mixed rows.
-        if (selectedBackendId !== null) {
-          url += `&backendId=${selectedBackendId}`;
-        }
-        if (filter === Filters.UNREAD) {
-          url += "&unread=1";
-        }
-
-        const response = await fetch(url, {
-          headers: {
-            "x-session-id": sessionId,
-          },
-        });
-
-        if (!response.ok) {
-          const errorBody = await response.json().catch(() => null);
-          const message =
-            errorBody?.error ?? `Failed to fetch threads (${response.status})`;
-          throw new Error(message);
-        }
-
-        const data = await response.json();
-        if (requestId !== latestRequestIdRef.current) {
-          return; // A newer filter/search replaced this request.
-        }
-        const threads: ThreadRecord[] = Array.isArray(data?.threads)
-          ? data.threads
-          : [];
-        const mappedChats = transformThreads(threads);
-        const hasMore = threads.length >= pageSize;
-
-        setHasMoreThreads(hasMore);
-        setNextThreadsOffset(offset + pageSize);
-
-        setChats((prev) => {
-          if (!append) {
-            // Odoo orders to the microsecond, which the list never sees:
-            // sort the first page the way every later re-sort will.
-            const sortedChats = mappedChats.sort(compareByRecency);
-            const filteredChats = applyFilter(sortedChats);
-            return {
-              ...prev,
-              complete: sortedChats,
-              filtered: filteredChats,
-              isLoading: false,
-            };
-          }
-
-          const merged = new Map(prev.complete.map((chat) => [chat.id, chat]));
-          mappedChats.forEach((chat) => {
-            if (!merged.has(chat.id)) {
-              merged.set(chat.id, chat);
-            }
-          });
-
-          const mergedList = Array.from(merged.values()).sort(compareByRecency);
-
-          return {
-            ...prev,
-            complete: mergedList,
-            filtered: applyFilter(mergedList),
-            isLoading: false,
-          };
-        });
-      } catch {
-        setChats((prev) => ({
-          ...prev,
-          isLoading: false,
-        }));
-      } finally {
-        isFetchingRef.current = false;
-        setIsLoadingMoreThreads(false);
-      }
-    },
-    [
-      sessionId,
-      transformThreads,
-      applyFilter,
-      includeThreadId,
-      debouncedSearchQuery,
-      selectedBackendId,
-      filter,
-    ]
-  );
-
-  const loadMoreThreads = useCallback(() => {
-    if (!sessionId || isLoadingMoreThreads || !hasMoreThreads) {
-      return;
-    }
-
-    fetchThreads({ append: true, offset: nextThreadsOffset });
-  }, [
-    fetchThreads,
-    hasMoreThreads,
-    isLoadingMoreThreads,
-    nextThreadsOffset,
-    sessionId,
-  ]);
-
-  useEffect(() => {
-    if (!sessionId) {
-      isFetchingRef.current = false;
-      setHasMoreThreads(false);
-      setIsLoadingMoreThreads(false);
-      setNextThreadsOffset(0);
-      setChats((prev) => ({
-        ...prev,
-        complete: [],
-        filtered: [],
-        isLoading: false,
-      }));
-      return;
-    }
-
-    // Initial fetch only - SSE will handle updates
-    setHasMoreThreads(true);
-    setIsLoadingMoreThreads(false);
-    setNextThreadsOffset(0);
-    fetchThreads({ showLoading: true, offset: 0 });
-
-    return () => {
-      isFetchingRef.current = false;
-    };
-  }, [sessionId, fetchThreads, sseConnected]);
-
-  useEffect(() => {
-    setChats((prev) => {
-      const filtered = applyFilter(prev.complete);
+      const { threads = [] } = await apiFetch<{
+        threads?: OdooThreadRecord[];
+      }>(`/api/threads?${params}`, { signal });
       return {
-        ...prev,
-        filtered,
+        chats: threads.map((record) => toChat(record, avatarUrl)),
+        hasMore: threads.length >= pageSize,
       };
-    });
-  }, [filter, applyFilter, chats.complete]);
+    },
+    getNextPageParam: (lastPage, pages) =>
+      lastPage.hasMore
+        ? pages.length * (search ? CONTACT_SEARCH_PAGE_SIZE : THREADS_PAGE_SIZE)
+        : undefined,
+  });
 
-  // Refetch when search query changes
+  const complete = useMemo(() => {
+    const byId = new Map<string, Chat>();
+    for (const page of threadsQuery.data?.pages ?? []) {
+      for (const chat of page.chats) {
+        if (!byId.has(chat.id)) {
+          byId.set(chat.id, chat);
+        }
+      }
+    }
+    const list = [...byId.values()];
+    // Search results keep Odoo's relevance order
+    return search ? list : list.sort(compareByRecency);
+  }, [threadsQuery.data, search]);
+
+  const filtered = useMemo(
+    () =>
+      complete.filter((chat) => {
+        if (
+          selectedBackendId !== null &&
+          chat.backendId !== selectedBackendId
+        ) {
+          return false;
+        }
+        // Odoo already filtered unread threads; this drops those read since
+        return filter !== Filters.UNREAD || !chat.read;
+      }),
+    [complete, filter, selectedBackendId]
+  );
+
+  // Message handlers read the list from a ref so they never re-subscribe
+  const completeRef = useRef<Chat[]>([]);
   useEffect(() => {
-    if (!sessionId) return;
+    completeRef.current = complete;
+  }, [complete]);
 
-    // Skip on initial mount (empty string)
-    // The initial fetch effect will handle the first load
-    if (debouncedSearchQuery === "" && chats.complete.length === 0) {
-      return;
-    }
+  const messageSearchQuery = useInfiniteQuery({
+    queryKey: ["message-search", search],
+    enabled: isAuthenticated && search.length > 0,
+    initialPageParam: 0,
+    queryFn: async ({ pageParam, signal }) => {
+      const params = new URLSearchParams({
+        search,
+        limit: String(MESSAGE_SEARCH_PAGE_SIZE),
+        offset: String(pageParam),
+      });
+      const { messages = [] } = await apiFetch<{
+        messages?: Record<string, unknown>[];
+      }>(`/api/messages/search?${params}`, { signal });
+      return {
+        results: messages.map(toSearchResult),
+        hasMore: messages.length >= MESSAGE_SEARCH_PAGE_SIZE,
+      };
+    },
+    getNextPageParam: (lastPage, pages) =>
+      lastPage.hasMore ? pages.length * MESSAGE_SEARCH_PAGE_SIZE : undefined,
+  });
+  const messageSearchResults = useMemo(
+    () =>
+      search
+        ? (messageSearchQuery.data?.pages ?? []).flatMap((page) => page.results)
+        : [],
+    [messageSearchQuery.data, search]
+  );
 
-    // Clear message results when search is empty
-    if (debouncedSearchQuery.trim().length === 0) {
-      setMessageSearchResults([]);
-      setIsSearchingMessages(false);
-      fetchThreads({ showLoading: true, offset: 0 });
-      return;
-    }
-
-    // Fetch both contact matches and message matches in parallel
-    setIsSearchingMessages(true);
-    const messageSearchUrl = `/api/messages/search?search=${encodeURIComponent(debouncedSearchQuery.trim())}&limit=20&offset=0`;
-
-    Promise.all([
-      fetchThreads({ showLoading: true, offset: 0 }),
-      fetch(messageSearchUrl, {
-        headers: { "x-session-id": sessionId },
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          const results = Array.isArray(data?.messages) ? data.messages : [];
-          setMessageSearchResults(
-            results.map((r: Record<string, unknown>) => ({
-              threadId: r.thread_id as number,
-              threadName: r.thread_name as string,
-              phoneNumber: (r.phone_number as string) ?? null,
-              backendId: (r.backend_id as number) ?? null,
-              partnerId: (r.partner_id as number) ?? null,
-              partnerName: (r.partner_name as string) ?? null,
-              messageId: r.message_id as number,
-              messageBody: r.message_body as string,
-              messageTimestamp: r.message_timestamp as number,
-            }))
-          );
-          setNextMessageSearchOffset(MESSAGE_SEARCH_PAGE_SIZE);
-          setHasMoreMessageResults(results.length >= MESSAGE_SEARCH_PAGE_SIZE);
-        })
-        .catch(() => {
-          setMessageSearchResults([]);
-        }),
-    ]).finally(() => {
-      setIsSearchingMessages(false);
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearchQuery, sessionId]);
-
-  // Unread total across every thread, not just the loaded page. The local sum
-  // only tells us when something changed; the server holds the real number.
-  const loadedUnreadCount = chats.complete.reduce(
+  // Unread total across every thread, not just the loaded pages
+  const unreadQuery = useQuery({
+    queryKey: ["unread-count"],
+    enabled: isAuthenticated,
+    refetchInterval: POLL_INTERVAL_MS,
+    queryFn: ({ signal }) =>
+      apiFetch<{ unreadCount: number }>("/api/threads/unread-count", {
+        signal,
+      }).then((data) => data.unreadCount),
+  });
+  const loadedUnreadCount = complete.reduce(
     (total, chat) => total + (chat.unreadCount ?? 0),
     0
   );
+  const totalUnreadCount = unreadQuery.data ?? loadedUnreadCount;
 
+  // The local sum only tells that something changed; Odoo has the number
   useEffect(() => {
-    if (!sessionId) {
-      setServerUnreadCount(null);
+    if (!isAuthenticated) {
       return;
     }
-
-    const controller = new AbortController();
     const timeout = setTimeout(() => {
-      fetch("/api/threads/unread-count", {
-        headers: { "x-session-id": sessionId },
-        signal: controller.signal,
-      })
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data) => {
-          if (typeof data?.unreadCount === "number") {
-            setServerUnreadCount(data.unreadCount);
-          }
-        })
-        .catch(() => {
-          // Keep the last known total; the local sum is the fallback.
-        });
+      queryClient.invalidateQueries({ queryKey: ["unread-count"] });
     }, 400);
-
-    return () => {
-      clearTimeout(timeout);
-      controller.abort();
-    };
-  }, [sessionId, loadedUnreadCount]);
-
-  const totalUnreadCount = serverUnreadCount ?? loadedUnreadCount;
+    return () => clearTimeout(timeout);
+  }, [isAuthenticated, loadedUnreadCount, queryClient]);
 
   // Mirror the unread total onto the app icon (installed PWA / dock).
   useEffect(() => {
     setUnreadBadge(totalUnreadCount);
   }, [totalUnreadCount]);
+
+  // New messages: alert, bump the unread count, move the thread up
+  const handleMessageArrival = useCallback(
+    (records: OdooMessageRecord[], threadId: string) => {
+      if (records.length === 0) {
+        return;
+      }
+      const chat = completeRef.current.find((entry) => entry.id === threadId);
+      const threadName =
+        chat?.partnerName || chat?.threadName || chat?.phoneNumber || null;
+
+      // The only place that alerts about a message: once per message
+      let unreadIncrement = 0;
+      for (const record of records) {
+        if (record.direction !== "incoming") {
+          continue;
+        }
+        const { isNew, interrupted } = notifyIncomingMessage({
+          threadId,
+          messageId: record.id,
+          title: threadName ?? "WhatsApp",
+          body: record.body || t("chat.newMessage"),
+        });
+        // The open thread is marked read at once, even in a hidden tab
+        if (isNew && interrupted && !isActiveThread(threadId)) {
+          unreadIncrement += 1;
+        }
+      }
+
+      const latest = records[records.length - 1];
+      patchCachedChat(queryClient, threadId, (current) => {
+        const unreadCount = (current.unreadCount || 0) + unreadIncrement;
+        return {
+          ...current,
+          lastMessagePreview: latest.body || current.lastMessagePreview,
+          lastMessageAt: latest.timestamp * 1000,
+          unreadCount,
+          read: unreadCount === 0,
+        };
+      });
+    },
+    [queryClient, t]
+  );
+
+  useRealtime({
+    onThread: (record) =>
+      upsertCachedChat(queryClient, toChat(record, avatarUrl)),
+    onMessage: (event, threadId, record) => {
+      // Cached chats stay current even when they are not open
+      upsertCachedMessages(queryClient, threadId, [
+        toMessage(record, threadId),
+      ]);
+      if (event === "created") {
+        handleMessageArrival([record], threadId);
+      }
+    },
+  });
+
+  const updateFilter = (value: string) => {
+    setFilter(value as Filters);
+  };
+
+  const updateSearchQuery = useCallback((query: string) => {
+    setSearchQuery(query);
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    searchTimeoutRef.current = setTimeout(() => {
+      setDebouncedSearchQuery(query);
+    }, SEARCH_DEBOUNCE_MS);
+  }, []);
+
+  const clearSearch = useCallback(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    setSearchQuery("");
+    setDebouncedSearchQuery("");
+  }, []);
+
+  const updateThreadPreview = useCallback(
+    (chatId: string, preview: string, timestamp: number) => {
+      patchCachedChat(queryClient, chatId, (chat) => ({
+        ...chat,
+        lastMessagePreview: preview,
+        lastMessageAt: timestamp,
+      }));
+    },
+    [queryClient]
+  );
+
+  const markChatAsRead = useCallback(
+    (chatId: string) => {
+      patchCachedChat(queryClient, chatId, (chat) => ({
+        ...chat,
+        read: true,
+        unreadCount: 0,
+      }));
+    },
+    [queryClient]
+  );
+
+  const {
+    hasNextPage: hasMoreThreads = false,
+    isFetchingNextPage: isLoadingMoreThreads,
+    fetchNextPage: fetchNextThreads,
+  } = threadsQuery;
+  const loadMoreThreads = useCallback(() => {
+    if (hasMoreThreads && !isLoadingMoreThreads) {
+      void fetchNextThreads();
+    }
+  }, [hasMoreThreads, isLoadingMoreThreads, fetchNextThreads]);
+
+  const {
+    hasNextPage: hasMoreMessageResults = false,
+    isFetchingNextPage: isLoadingMoreMessages,
+    fetchNextPage: fetchNextMessageResults,
+  } = messageSearchQuery;
+  const loadMoreMessageResults = useCallback(() => {
+    if (hasMoreMessageResults && !isLoadingMoreMessages) {
+      void fetchNextMessageResults();
+    }
+  }, [hasMoreMessageResults, isLoadingMoreMessages, fetchNextMessageResults]);
+
+  const chats = useMemo(
+    () => ({ complete, filtered, isLoading: threadsQuery.isPending }),
+    [complete, filtered, threadsQuery.isPending]
+  );
 
   return (
     <ChatsContext.Provider
@@ -1027,7 +483,7 @@ export default function ChatsProvider({
         updateSearchQuery,
         clearSearch,
         messageSearchResults,
-        isSearchingMessages,
+        isSearchingMessages: messageSearchQuery.isLoading,
         hasMoreMessageResults,
         isLoadingMoreMessages,
         loadMoreMessageResults,

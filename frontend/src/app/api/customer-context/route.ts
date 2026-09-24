@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { OdooClient, OdooSessionClient } from "@/app/lib/odoo/jsonrpc";
+import type { OdooSessionClient } from "@/app/lib/odoo/jsonrpc";
+import { odooErrorResponse, requireSession } from "@/app/lib/odoo/server";
 import {
   type CustomerAnalytics,
   customerContextCache,
 } from "@/app/lib/customer-context-cache";
-
-const REQUIRED_ENV_VARS = [
-  "ODOO_JSONRPC_HOST",
-  "ODOO_JSONRPC_DATABASE",
-] as const;
 
 const ANALYTICS_PERIOD_DAYS = 720;
 
@@ -31,15 +27,6 @@ type SummaryEntry = {
 };
 
 type PartnerSummary = Record<string, SummaryEntry | undefined>;
-
-const ensureEnv = () => {
-  const missing = REQUIRED_ENV_VARS.filter((name) => !process.env[name]);
-  if (missing.length > 0) {
-    throw new Error(
-      `Missing required environment variables: ${missing.join(", ")}`
-    );
-  }
-};
 
 const asId = (value: OdooThreadRecord["partner_id"]): number | null => {
   if (Array.isArray(value)) {
@@ -103,18 +90,6 @@ const loadPartnerAnalytics = async (
 };
 
 export async function GET(request: NextRequest) {
-  try {
-    ensureEnv();
-  } catch (error) {
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Server configuration error",
-      },
-      { status: 500 }
-    );
-  }
-
   const threadIdValue = request.nextUrl.searchParams.get("threadId");
   const threadId = threadIdValue ? Number(threadIdValue) : Number.NaN;
 
@@ -125,32 +100,11 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const sessionId = request.headers.get("x-session-id");
-  if (!sessionId) {
-    return NextResponse.json(
-      { error: "Missing Odoo session id" },
-      { status: 401 }
-    );
+  const auth = await requireSession(request);
+  if ("response" in auth) {
+    return auth.response;
   }
-
-  const protocol: "http" | "https" =
-    process.env.ODOO_JSONRPC_PROTOCOL === "https" ? "https" : "http";
-  const portValue = process.env.ODOO_JSONRPC_PORT;
-  const port = portValue ? Number(portValue) : undefined;
-
-  if (typeof port !== "undefined" && !Number.isSafeInteger(port)) {
-    return NextResponse.json(
-      { error: "ODOO_JSONRPC_PORT must be a valid number" },
-      { status: 500 }
-    );
-  }
-
-  const odooClient = new OdooClient({
-    host: process.env.ODOO_JSONRPC_HOST as string,
-    port,
-    protocol,
-  });
-  const sessionClient = odooClient.createSession(sessionId);
+  const { sessionId, session: sessionClient } = auth;
 
   try {
     // Resolve the partner from an access-controlled thread. The browser never
@@ -201,10 +155,13 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ analytics });
   } catch (error) {
-    console.error("[CustomerContext] Failed to load analytics:", error);
-    return NextResponse.json(
-      { error: "Unable to load customer analytics" },
-      { status: 502 }
-    );
+    // Users without sales or invoicing rights have no analytics to see
+    if (
+      (error as { data?: { name?: string } }).data?.name ===
+      "odoo.exceptions.AccessError"
+    ) {
+      return NextResponse.json({ analytics: unavailable() });
+    }
+    return odooErrorResponse(error, "Unable to load customer analytics");
   }
 }

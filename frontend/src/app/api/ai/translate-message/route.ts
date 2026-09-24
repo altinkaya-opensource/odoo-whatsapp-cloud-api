@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireSession } from "@/app/lib/odoo/server";
+import {
+  invalidBody,
+  odooErrorResponse,
+  readJsonBody,
+  requireAgent,
+} from "@/app/lib/odoo/server";
 import {
   createOpenAIClient,
   isAIEnabled,
   getOpenAIModel,
 } from "@/app/lib/ai/openai-client";
-
-type TranslateMessageRequest = {
-  text: string;
-  targetLanguage: string; // "en" or "tr"
-};
+import { MAX_INPUT_CHARS } from "@/app/lib/ai/conversation";
 
 // Map language codes to full names for clearer prompts
 const LANGUAGE_NAMES: Record<string, string> = {
@@ -27,14 +28,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const auth = await requireSession(request);
+    const auth = await requireAgent(request);
     if ("response" in auth) {
       return auth.response;
     }
 
-    // Parse request body
-    const body: TranslateMessageRequest = await request.json();
-    const { text, targetLanguage } = body;
+    const body = await readJsonBody(request);
+    if (!body) {
+      return invalidBody();
+    }
+    const text = typeof body.text === "string" ? body.text : "";
+    const targetLanguage =
+      typeof body.targetLanguage === "string" ? body.targetLanguage : "";
 
     // Validate inputs
     if (!text || text.trim().length === 0) {
@@ -43,8 +48,11 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    if (text.length > MAX_INPUT_CHARS) {
+      return NextResponse.json({ error: "Text is too long" }, { status: 413 });
+    }
 
-    if (!targetLanguage || !LANGUAGE_NAMES[targetLanguage]) {
+    if (!Object.hasOwn(LANGUAGE_NAMES, targetLanguage)) {
       return NextResponse.json(
         { error: "Invalid target language" },
         { status: 400 }
@@ -95,12 +103,6 @@ IMPORTANT RULES:
 
     return NextResponse.json({ translatedText });
   } catch (error) {
-    console.error("AI translate-message error:", error);
-    const errorMessage =
-      error instanceof Error ? error.message : "Unknown error occurred";
-    return NextResponse.json(
-      { error: `Failed to translate: ${errorMessage}` },
-      { status: 500 }
-    );
+    return odooErrorResponse(error, "Failed to translate");
   }
 }

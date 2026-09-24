@@ -1,56 +1,52 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  getOdooBaseUrl,
+  requireSession,
+  UNTRUSTED_FILE_HEADERS,
+} from "@/app/lib/odoo/server";
+import { ODOO_TIMEOUT_MS } from "@/app/lib/odoo/jsonrpc";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ partnerId: string }> }
 ) {
   const { partnerId } = await params;
-
-  // Get session ID from header or query parameter (like attachments download)
-  const url = new URL(request.url);
-  const sessionId =
-    request.headers.get("x-session-id") || url.searchParams.get("session_id");
-
-  if (!sessionId) {
-    return new NextResponse(null, { status: 401 });
+  if (!/^\d+$/.test(partnerId)) {
+    return new NextResponse(null, { status: 404 });
   }
 
-  const protocol = process.env.ODOO_JSONRPC_PROTOCOL || "http";
-  const host = process.env.ODOO_JSONRPC_HOST;
-  const port = process.env.ODOO_JSONRPC_PORT;
-
-  const odooUrl = `${protocol}://${host}:${port}/whatsapp/partner/profile_picture/${partnerId}`;
+  const auth = await requireSession(request);
+  if ("response" in auth) {
+    return new NextResponse(null, { status: auth.response.status });
+  }
 
   try {
-    // Fetch the avatar from Odoo backend with session cookie
-    const response = await fetch(odooUrl, {
-      headers: {
-        Cookie: `session_id=${sessionId}`,
-      },
-      redirect: "follow", // Automatically follow 303 redirects
-      cache: "no-store", // Don't cache during development
-    });
+    const response = await fetch(
+      `${getOdooBaseUrl()}/whatsapp/partner/profile_picture/${partnerId}`,
+      {
+        headers: {
+          Cookie: `session_id=${auth.sessionId}`,
+        },
+        cache: "no-store",
+        signal: AbortSignal.timeout(ODOO_TIMEOUT_MS),
+      }
+    );
 
-    if (!response.ok) {
-      // If image not found, return 404 so Profile component shows colored avatar
+    // A missing picture, or a login page instead of one: the Profile
+    // component then shows the coloured initials
+    const contentType = response.headers.get("Content-Type") || "";
+    if (!response.ok || !contentType.startsWith("image/")) {
       return new NextResponse(null, { status: 404 });
     }
 
-    // Check if we got HTML instead of an image (login redirect)
-    const contentType = response.headers.get("Content-Type") || "";
-    if (contentType.includes("text/html")) {
-      return new NextResponse(null, { status: 401 });
-    }
-
-    // Get the image data
-    const imageBuffer = await response.arrayBuffer();
-
-    // Return the image with proper headers
-    return new NextResponse(imageBuffer, {
+    return new NextResponse(await response.arrayBuffer(), {
       status: 200,
       headers: {
-        "Content-Type": contentType || "image/png",
-        "Cache-Control": "public, max-age=3600", // Cache for 1 hour
+        ...UNTRUSTED_FILE_HEADERS,
+        // Odoo serves avatars as PNG; never pass another type through
+        "Content-Type": "image/png",
+        // Per-user content: never store it in a shared cache
+        "Cache-Control": "private, max-age=3600",
       },
     });
   } catch {

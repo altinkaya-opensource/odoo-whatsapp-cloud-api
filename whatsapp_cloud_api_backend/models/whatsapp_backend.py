@@ -20,10 +20,14 @@ import phonenumbers
 import requests
 from requests import RequestException
 
-from odoo import _, fields, models
-from odoo.exceptions import UserError
+from odoo import _, api, fields, models
+from odoo.exceptions import UserError, ValidationError
 
 _logger = logging.getLogger(__name__)
+
+# Credentials stay with the people who configure backends: agents only need
+# to send, and the code that talks to Meta reads them with sudo.
+SECRET_GROUPS = "whatsapp_cloud_api_backend.group_whatsapp_backend_manager"
 
 
 class WhatsAppBackend(models.Model):
@@ -45,18 +49,20 @@ class WhatsAppBackend(models.Model):
     name = fields.Char(required=True)
     active = fields.Boolean(default=True)
     main_backend = fields.Boolean(default=False)
-    api_token = fields.Char(string="API Token", required=True)
+    api_token = fields.Char(string="API Token", required=True, groups=SECRET_GROUPS)
     phone_number_id = fields.Char(string="Phone Number ID", required=True)
     api_version = fields.Char(string="API Version", required=True, default="v23.0")
     webhook_secret = fields.Char(
         required=True,
         default=lambda self: secrets.token_urlsafe(32),
+        groups=SECRET_GROUPS,
     )
     app_secret = fields.Char(
         string="Meta App Secret",
         help="App secret of the Meta app, used to verify the "
         "X-Hub-Signature-256 header of incoming WhatsApp webhooks. "
         "Incoming webhooks are accepted unsigned while this is empty.",
+        groups=SECRET_GROUPS,
     )
     language = fields.Many2one(
         comodel_name="res.lang",
@@ -80,12 +86,11 @@ class WhatsAppBackend(models.Model):
         default=lambda self: self.env.company,
     )
 
+    # Only the frontend's address is used now (SSO links); the field name
+    # stays from when Odoo posted webhooks to /api/webhooks/whatsapp.
     frontend_webhook_url = fields.Char(
-        string="Frontend Webhook URL",
-        help="URL to send WhatsApp thread and message updates to the frontend.",
-    )
-    frontend_webhook_secret = fields.Char(
-        help="Secret token to authenticate frontend webhook requests.",
+        string="Frontend URL",
+        help="Address of the WhatsApp frontend, used to open it from Odoo.",
     )
 
     # Chatbot configuration
@@ -111,13 +116,32 @@ class WhatsAppBackend(models.Model):
         compute="_compute_template_count",
     )
 
-    _sql_constraints = [
-        (
-            "main_backend_unique",
-            "unique(main_backend)",
-            "There can be only one main WhatsApp backend.",
-        ),
-    ]
+    # Replaces unique(main_backend), which also allowed only one backend with
+    # main_backend = False. Odoo drops the old constraint on upgrade.
+    @api.constrains("main_backend")
+    def _check_single_main_backend(self):
+        if self.search_count([("main_backend", "=", True)]) > 1:
+            raise ValidationError(_("There can be only one main WhatsApp backend."))
+
+    def write(self, vals):
+        previous_users = (
+            {backend: backend.user_ids for backend in self}
+            if "user_ids" in vals
+            else {}
+        )
+        res = super().write(vals)
+        for backend, users in previous_users.items():
+            new_users = backend.user_ids - users
+            if new_users:
+                # Joining a backend starts with its history read, as it did
+                # when read statuses were created for existing members only.
+                threads = (
+                    self.env["whatsapp.thread"]
+                    .sudo()
+                    .search([("backend_id", "=", backend.id)])
+                )
+                self.env["whatsapp.thread.member"].sudo()._mark_seen(threads, new_users)
+        return res
 
     def _compute_template_count(self):
         Template = self.env["whatsapp.template"]
@@ -150,13 +174,19 @@ class WhatsAppBackend(models.Model):
         version = self.api_version or "v17.0"
         return f"https://graph.facebook.com/{version}/{self.waba_id}"
 
+    def _get_api_token(self):
+        """Return the Meta API token, which agents cannot read themselves."""
+        self.ensure_one()
+        return self.sudo().api_token
+
     def _call_whatsapp_api(self, endpoint, payload):
         self.ensure_one()
-        if not self.api_token:
+        api_token = self._get_api_token()
+        if not api_token:
             raise UserError(_("API token is required to call the WhatsApp API."))
         url = f"{self._graph_api_base_url()}/{endpoint}"
         headers = {
-            "Authorization": f"Bearer {self.api_token}",
+            "Authorization": f"Bearer {api_token}",
             "Content-Type": "application/json",
         }
         try:
@@ -215,14 +245,15 @@ class WhatsAppBackend(models.Model):
             str: WhatsApp media ID
         """
         self.ensure_one()
-        if not self.api_token:
+        api_token = self._get_api_token()
+        if not api_token:
             raise UserError(_("API token is required to upload media to WhatsApp."))
         if not attachment:
             raise UserError(_("Attachment is required to upload media."))
 
         url = f"{self._graph_api_base_url()}/media"
         headers = {
-            "Authorization": f"Bearer {self.api_token}",
+            "Authorization": f"Bearer {api_token}",
         }
 
         # Get file data from attachment
@@ -296,7 +327,7 @@ class WhatsAppBackend(models.Model):
         # Fetch templates from WhatsApp API
         url = f"{self._waba_api_base_url()}/message_templates"
         headers = {
-            "Authorization": f"Bearer {self.api_token}",
+            "Authorization": f"Bearer {self._get_api_token()}",
         }
 
         try:
@@ -383,6 +414,22 @@ class WhatsAppBackend(models.Model):
             "context": {"default_waba_id": self.waba_id},
         }
 
+    def _get_frontend_login_url(self, thread=None):
+        """Link that signs the current user in to the frontend, once.
+
+        The link carries a one-time code, never the user's session: the
+        frontend trades the code for a session of its own.
+        """
+        self.ensure_one()
+        base_url = (self.frontend_webhook_url or "").replace(
+            "/api/webhooks/whatsapp", ""
+        )
+        code = self.env["whatsapp.frontend.sso"]._issue_code(self.env.user)
+        url = f"{base_url.rstrip('/')}/api/auth/sso-login?code={code}"
+        if thread:
+            url += f"&thread_id={thread.id}"
+        return url
+
     # ---------------------------------------------------------------------
     # Thread helpers
     # ---------------------------------------------------------------------
@@ -408,6 +455,9 @@ class WhatsAppBackend(models.Model):
 
     def _get_or_create_thread(self, phone_number, partner=None, contact_name=None):
         self.ensure_one()
+        # Every send goes through here and continues with sudo: only members
+        # of this backend (or sudo callers such as the SMS fallback) may send.
+        self.check_access_rule("read")
         if not phone_number:
             raise UserError(
                 _("A phone number is required to identify the WhatsApp thread.")
@@ -506,20 +556,9 @@ class WhatsAppBackend(models.Model):
         thread = self._get_or_create_thread(
             phone_number, partner=partner, contact_name=contact_name
         )
-        data = thread.send_reply_message(
+        return thread.send_reply_message(
             body, reply_to_message_id, preview_url=preview_url
         )
-
-        # Link the replied message
-        message_record = self.env["whatsapp.message"].search(
-            [("id", "=", data["message_id"])]
-        )
-        reply_record = self.env["whatsapp.message"].search(
-            [("message_id", "=", reply_to_message_id)]
-        )
-        message_record.sudo().write({"replied_message_id": reply_record.id})
-
-        return data
 
     def send_reaction_message(
         self,

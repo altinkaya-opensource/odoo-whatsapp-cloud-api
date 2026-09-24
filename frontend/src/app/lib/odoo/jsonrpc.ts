@@ -1,5 +1,8 @@
 const JSON_RPC_VERSION = "2.0" as const;
 
+/** How long a call to Odoo may take before the route gives up on it. */
+export const ODOO_TIMEOUT_MS = 30_000;
+
 type Protocol = "http" | "https";
 
 export interface OdooClientConfig {
@@ -105,11 +108,12 @@ const parseJsonRpcResponse = <T>(data: JsonRpcResponse<T>): T => {
     throw err;
   }
 
-  if (typeof data.result === "undefined") {
-    throw new Error("Unexpected JSON-RPC response: missing result value");
+  if (data.jsonrpc !== JSON_RPC_VERSION) {
+    throw new Error("Unexpected JSON-RPC response");
   }
 
-  return data.result;
+  // Odoo leaves "result" out when the method returns None
+  return (data.result ?? null) as T;
 };
 
 const assertHost = (host?: string): host is string => {
@@ -201,6 +205,7 @@ export class OdooClient {
         },
         id: 1,
       }),
+      signal: AbortSignal.timeout(ODOO_TIMEOUT_MS),
     });
 
     if (!response.ok) {
@@ -237,6 +242,7 @@ export class OdooClient {
         Accept: "application/json",
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(ODOO_TIMEOUT_MS),
     });
   }
 }
@@ -403,25 +409,6 @@ export class OdooSessionClient {
     return this.request<T>(body);
   }
 
-  async callButton<T>(
-    model: string,
-    method: string,
-    args: unknown[],
-    wrapArgs = true
-  ) {
-    const resolvedArgs = wrapArgs ? [args] : args;
-
-    const body = {
-      model,
-      method,
-      args: resolvedArgs,
-      context_id: 1,
-      domain_id: null,
-    };
-
-    return this.request<T>(body, "/web/dataset/call_button");
-  }
-
   /** Call a `type="json"` Odoo controller directly. */
   async callController<T>(path: string, params: Record<string, unknown> = {}) {
     return this.request<T>(params, path);
@@ -445,6 +432,7 @@ export class OdooSessionClient {
         Cookie: this.sessionCookie,
       },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(ODOO_TIMEOUT_MS),
     });
 
     if (!response.ok) {

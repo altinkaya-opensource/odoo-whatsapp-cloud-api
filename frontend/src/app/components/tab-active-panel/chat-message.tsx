@@ -1,42 +1,26 @@
 import { Message } from "@/app/context/chats-provider";
 import MessageStatusIcon from "../message-status-icon";
-import { useCurrentChat } from "@/app/hooks/use-current-chat";
 import Profile from "../profile";
-import { useContacts } from "@/app/hooks/use-contacts";
 import { formatTime } from "@/app/utils";
 import { useAuth } from "@/app/hooks/use-auth";
 import { useTranslations } from "@/app/context/translation-provider";
 import AttachmentDisplay from "../message/attachment";
 import FormattedText from "../message/formatted-text";
 
-const getContactColor = (value: string): string => {
-  const colors = [
-    "text-[rgb(var(--status-error))]",
-    "text-[rgb(var(--status-info))]",
-    "text-[rgb(var(--accent-primary))]",
-    "text-[rgb(var(--status-success))]",
-    "text-[rgb(var(--status-warning))]",
-  ];
-  const hash = Array.from(value).reduce(
-    (total, character) => total + character.charCodeAt(0),
-    0
-  );
-  return colors[hash % colors.length];
-};
-
 type ChatMessageProps = {
   message: Message;
+  /** Who the other side of the chat is, for quotes of their messages */
+  customerName: string;
   translatedText?: string;
   isTranslated?: boolean;
 };
 
 export default function ChatMessage({
   message,
+  customerName,
   translatedText,
   isTranslated = false,
 }: ChatMessageProps) {
-  const { getContact } = useContacts();
-  const { group } = useCurrentChat();
   const { backendUsersById, backendUserId } = useAuth();
   const { t, locale } = useTranslations();
 
@@ -65,9 +49,7 @@ export default function ChatMessage({
     if (!message.replyTo) {
       return null;
     }
-    const name = message.replyTo.senderIsUser
-      ? t("common.you")
-      : (getContact(message.replyTo.contactId)?.displayName ?? t("common.you"));
+    const name = message.replyTo.senderIsUser ? t("common.you") : customerName;
     return (
       <div className="mb-1 w-full max-w-xs rounded-xl border-l-[3px] border-[rgb(var(--accent-primary))] bg-[rgb(var(--bg-reply-preview)/var(--bg-reply-preview-opacity))] px-2.5 py-2 text-xs text-[rgb(var(--text-secondary))]">
         <p className="font-semibold truncate">{name}</p>
@@ -75,105 +57,6 @@ export default function ChatMessage({
       </div>
     );
   };
-
-  if (group) {
-    const contact = getContact(message.contactId);
-    // Use contact ID as seed for incoming messages
-    const contactSeed = contact?.id ? parseInt(contact.id, 10) : undefined;
-    return (
-      <div className="flex flex-col gap-1.5">
-        <div className="flex max-w-full items-start gap-2">
-          {!message.isSentFromUser && (
-            <Profile
-              url={contact?.contactAvatar}
-              alt={contact?.displayName ?? message.contactId}
-              seed={contactSeed}
-            />
-          )}
-          <div
-            className={`message-bubble message-bubble--${
-              message.isSentFromUser ? "outgoing" : "incoming"
-            } group relative z-20 max-w-[min(32rem,calc(100vw-8rem))] overflow-hidden rounded-2xl border border-[rgb(var(--border-primary)/var(--border-primary-opacity))] shadow-sm`}
-          >
-            <div
-              className={`flex flex-col items-start justify-center gap-2 p-3 ${
-                message.isSentFromUser
-                  ? "bg-[rgb(var(--bg-chat-outgoing))]"
-                  : "bg-[rgb(var(--bg-chat-incoming)/var(--bg-chat-incoming-opacity))]"
-              }`}
-            >
-              {!message.isSentFromUser && (
-                <p
-                  className={`text-xs font-semibold ${getContactColor(
-                    contact?.id ?? message.contactId
-                  )}`}
-                >
-                  {contact?.displayName ?? message.contactId}
-                </p>
-              )}
-              {renderReplyPreview()}
-              {message.attachment && (
-                <div className="mb-2">
-                  <AttachmentDisplay
-                    attachment={message.attachment}
-                    messageId={message.id}
-                  />
-                </div>
-              )}
-              {shouldShowMessageText && (
-                <div className="flex flex-col gap-1">
-                  <div className="flex items-center gap-2">
-                    <p className="max-w-xs break-words text-sm leading-6 text-[rgb(var(--text-primary))]">
-                      <FormattedText text={displayText} />
-                    </p>
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      <p className="text-[rgb(var(--text-message-time)/var(--text-message-time-opacity))] text-xs whitespace-nowrap">
-                        {formatTime(message.timestamp, locale)}
-                      </p>
-                      {message.isSentFromUser && (
-                        <MessageStatusIcon message={message} isInMessage />
-                      )}
-                    </div>
-                  </div>
-                  {isTranslated && (
-                    <p className="text-[10px] text-[rgb(var(--accent-primary))] italic">
-                      {t("chat.translated")}
-                    </p>
-                  )}
-                </div>
-              )}
-              {!shouldShowMessageText && (
-                <div className="flex items-center gap-2 mt-1">
-                  <p className="text-[rgb(var(--text-message-time)/var(--text-message-time-opacity))] text-xs">
-                    {formatTime(message.timestamp, locale)}
-                  </p>
-                  {message.isSentFromUser && (
-                    <MessageStatusIcon message={message} isInMessage />
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-          {message.isSentFromUser && (
-            <Profile
-              url={outgoingAvatar ?? undefined}
-              alt={senderUser?.name ?? t("common.you")}
-              seed={senderUser?.id}
-            />
-          )}
-        </div>
-        {message.error && (
-          <p
-            className={`text-xs text-[rgb(var(--status-error))] px-2 ${
-              message.isSentFromUser ? "text-right self-end" : "text-left"
-            }`}
-          >
-            {message.error}
-          </p>
-        )}
-      </div>
-    );
-  }
 
   return (
     <div className="flex flex-col gap-1.5">

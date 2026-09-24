@@ -11,11 +11,6 @@
     "submit": "Giriş yap",
     "submitting": "Giriş yapılıyor...",
     "submitError": "Şu anda giriş yapılamıyor",
-    "loginModeCredentials": "Kullanıcı Adı & Şifre",
-    "loginModeSessionId": "Oturum ID",
-    "sessionIdLabel": "Oturum ID",
-    "sessionIdPlaceholder": "Odoo çerezlerinden session_id değerini buraya yapıştırın...",
-    "sessionIdHelp": "Odoo tarayıcı çerezlerinden <code>session_id</code> değerini kopyalayın",
     "totpTitle": "İki aşamalı doğrulama",
     "totpDescription": "Doğrulayıcı uygulamanızdaki 6 haneli kodu girin.",
     "totpCode": "Doğrulama kodu",
@@ -27,21 +22,19 @@
     "totpInvalid": "Doğrulama kodu geçersiz. Tekrar deneyin.",
     "totpExpired": "Doğrulama oturumunuz sona erdi. Tekrar giriş yapın.",
     "totpUnavailable": "Kod şu anda doğrulanamıyor. Tekrar deneyin.",
-    "ssoLoggingIn": "Odoo'dan giriş yapılıyor...",
-    "ssoError": "SSO giriş hatası",
+    "ssoError": "Odoo'dan gelen giriş bağlantısının süresi dolmuş ya da bağlantı zaten kullanılmış. WhatsApp'ı Odoo'dan yeniden açın ya da aşağıdan giriş yapın.",
     "workspaceEyebrow": "Odoo + WhatsApp",
     "workspaceTitle": "Müşteri bilgileriyle sohbetler.",
     "workspaceDescription": "Müşteri mesajlarını Odoo işlerinizle aynı akışta yönetin.",
     "workspaceFeatureContext": "Bağlı Odoo müşterisini açın",
     "workspaceFeatureTemplates": "Gerektiğinde onaylı şablonları kullanın",
-    "workspaceFeatureUpdates": "Canlı sohbet güncellemelerini takip edin"
+    "workspaceFeatureUpdates": "Canlı sohbet güncellemelerini takip edin",
+    "tooManyAttempts": "Çok fazla hatalı deneme. Birkaç dakika bekleyip yeniden deneyin."
   },
   "chat": {
     "filters": {
       "all": "Tümü",
       "unread": "Okunmamış",
-      "favorites": "Favoriler",
-      "groups": "Gruplar",
       "readAll": "Tümünü Oku"
     },
     "backendSelector": {
@@ -53,21 +46,18 @@
     "loadingOlderMessages": "Eski mesajlar yükleniyor...",
     "loadingOlderThreads": "Eski sohbetler yükleniyor...",
     "loadOlderThreads": "Eski sohbetleri yükle",
-    "typing": "yazıyor...",
-    "statusTyping": "yazıyor",
-    "statusOnline": "çevrimiçi",
     "dayToday": "Bugün",
     "dayYesterday": "Dün",
     "reply": "Yanıtla",
     "addReaction": "Tepki ekle",
     "openInOdoo": "Odoo",
-    "openInOdooTitle": "Odoo'da partneri aç",
     "backToChats": "Sohbetlere dön",
     "noResults": "Sohbet bulunamadı",
     "noResultsHint": "Farklı bir arama terimi deneyin",
     "translated": "Çevrildi",
     "searchSectionContacts": "Kişiler",
-    "searchSectionMessages": "Mesajlar"
+    "searchSectionMessages": "Mesajlar",
+    "newMessage": "Yeni mesaj"
   },
   "context": {
     "title": "Müşteri bilgileri",
@@ -77,7 +67,6 @@
     "emptyDescription": "Bağlı Odoo müşterisini görmek için bir sohbet seçin.",
     "unknownContact": "Bilinmeyen müşteri",
     "customer": "Müşteri",
-    "group": "Grup",
     "phone": "Telefon",
     "backend": "WhatsApp hesabı",
     "analyticsTitle": "Satış analitiği",
@@ -105,11 +94,7 @@
     "aiImproveError": "Metin yapay zeka ile iyileştirilemedi",
     "translate": "Müşteri diline çevir",
     "translateError": "Metin çevrilemedi",
-    "ragGenerate": "Yapay zeka yanıtı oluştur (RAG)",
-    "ragGenerating": "Oluşturuluyor...",
-    "ragGenerateError": "Yapay zeka yanıtı oluşturulamadı",
     "suggestionsLoading": "Öneriler oluşturuluyor...",
-    "suggestionsError": "Öneriler oluşturulamadı",
     "suggestedReplies": "Yanıt önerileri",
     "refreshSuggestions": "Önerileri yenile",
     "attachmentError": "Ek gönderilemedi",
@@ -142,15 +127,6 @@
     "empty": "Bu hesap için kullanılabilir şablon mesaj bulunamadı.",
     "loading": "Şablonlar yükleniyor...",
     "error": "Şablonlar yüklenemedi"
-  },
-  "chatList": {
-    "title": "Sohbetler",
-    "newChat": "Yeni sohbet",
-    "newGroup": "Yeni grup",
-    "newContact": "Yeni kişi",
-    "newCommunity": "Yeni topluluk",
-    "searchPlaceholder": "Sohbetler içinde ara",
-    "emptyProfileSubtitle": "Kendinize mesaj gönderin"
   },
   "navigation": {
     "chats": "Sohbetler",
@@ -207,15 +183,7 @@
     "identityDescription": "Giriş yaptığınız çalışma alanı kimliği.",
     "openSettings": "Ayarları aç"
   },
-  "newChat": {
-    "title": "Yeni sohbet",
-    "searchPlaceholder": "İsim ya da numara ara",
-    "contactsHeader": "Uygulamadaki kişiler",
-    "selfLabel": "(Sen)"
-  },
   "common": {
-    "today": "Bugün",
-    "yesterday": "Dün",
     "dateFormat": "{{date}}",
     "comingSoon": "Yakında...",
     "you": "Sen"

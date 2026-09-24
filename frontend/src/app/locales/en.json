@@ -11,11 +11,6 @@
     "submit": "Sign in",
     "submitting": "Signing in...",
     "submitError": "Unable to sign in right now",
-    "loginModeCredentials": "Username & Password",
-    "loginModeSessionId": "Session ID",
-    "sessionIdLabel": "Session ID",
-    "sessionIdPlaceholder": "Paste your session_id from Odoo cookies here...",
-    "sessionIdHelp": "Copy the <code>session_id</code> value from your Odoo browser cookies",
     "totpTitle": "Two-factor authentication",
     "totpDescription": "Enter the 6-digit code from your authenticator app.",
     "totpCode": "Authentication code",
@@ -27,21 +22,19 @@
     "totpInvalid": "The authentication code is invalid. Try again.",
     "totpExpired": "Your verification session expired. Sign in again.",
     "totpUnavailable": "Can't verify the code right now. Try again.",
-    "ssoLoggingIn": "Logging in from Odoo...",
-    "ssoError": "SSO sign-in error",
+    "ssoError": "The sign-in link from Odoo expired or was already used. Open WhatsApp from Odoo again, or sign in below.",
     "workspaceEyebrow": "Odoo + WhatsApp",
     "workspaceTitle": "Conversations, with customer context.",
     "workspaceDescription": "Handle customer messages in the same workflow as the rest of your Odoo work.",
     "workspaceFeatureContext": "Open the linked Odoo customer",
     "workspaceFeatureTemplates": "Use approved templates when required",
-    "workspaceFeatureUpdates": "Stay current with live conversation updates"
+    "workspaceFeatureUpdates": "Stay current with live conversation updates",
+    "tooManyAttempts": "Too many failed attempts. Wait a few minutes and try again."
   },
   "chat": {
     "filters": {
       "all": "All",
       "unread": "Unread",
-      "favorites": "Favorites",
-      "groups": "Groups",
       "readAll": "Read All"
     },
     "backendSelector": {
@@ -53,21 +46,18 @@
     "loadingOlderMessages": "Loading older messages...",
     "loadingOlderThreads": "Loading older chats...",
     "loadOlderThreads": "Load older chats",
-    "typing": "typing...",
-    "statusTyping": "typing",
-    "statusOnline": "online",
     "dayToday": "Today",
     "dayYesterday": "Yesterday",
     "reply": "Reply",
     "addReaction": "Add reaction",
     "openInOdoo": "Odoo",
-    "openInOdooTitle": "Open partner in Odoo",
     "backToChats": "Back to chats",
     "noResults": "No chats found",
     "noResultsHint": "Try a different search term",
     "translated": "Translated",
     "searchSectionContacts": "Contacts",
-    "searchSectionMessages": "Messages"
+    "searchSectionMessages": "Messages",
+    "newMessage": "New message"
   },
   "context": {
     "title": "Customer context",
@@ -77,7 +67,6 @@
     "emptyDescription": "Select a conversation to see the linked Odoo customer.",
     "unknownContact": "Unknown customer",
     "customer": "Customer",
-    "group": "Group",
     "phone": "Phone",
     "backend": "WhatsApp account",
     "analyticsTitle": "Sales analytics",
@@ -105,11 +94,7 @@
     "aiImproveError": "Failed to improve text with AI",
     "translate": "Translate to customer's language",
     "translateError": "Failed to translate text",
-    "ragGenerate": "Generate AI response (RAG)",
-    "ragGenerating": "Generating...",
-    "ragGenerateError": "Failed to generate AI response",
     "suggestionsLoading": "Generating suggestions...",
-    "suggestionsError": "Failed to generate suggestions",
     "suggestedReplies": "Suggested replies",
     "refreshSuggestions": "Refresh suggestions",
     "attachmentError": "Failed to send attachment",
@@ -142,15 +127,6 @@
     "empty": "No template messages available for this account.",
     "loading": "Loading templates...",
     "error": "Failed to load templates"
-  },
-  "chatList": {
-    "title": "Chats",
-    "newChat": "New Chat",
-    "newGroup": "New Group",
-    "newContact": "New Contact",
-    "newCommunity": "New Community",
-    "searchPlaceholder": "Search in chats",
-    "emptyProfileSubtitle": "Message yourself"
   },
   "navigation": {
     "chats": "Chats",
@@ -207,15 +183,7 @@
     "identityDescription": "Your signed-in workspace identity.",
     "openSettings": "Open settings"
   },
-  "newChat": {
-    "title": "New Chat",
-    "searchPlaceholder": "Search for name or number",
-    "contactsHeader": "Contacts on App",
-    "selfLabel": "(You)"
-  },
   "common": {
-    "today": "Today",
-    "yesterday": "Yesterday",
     "dateFormat": "{{date}}",
     "comingSoon": "Coming soon...",
     "you": "You"

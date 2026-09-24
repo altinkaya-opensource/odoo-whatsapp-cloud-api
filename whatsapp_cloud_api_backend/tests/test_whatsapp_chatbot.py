@@ -8,15 +8,16 @@ from odoo.tests.common import TransactionCase
 
 from odoo.addons.queue_job.tests.common import trap_jobs
 
-from ..controllers import webhook
-from ..controllers.webhook import WhatsAppCloudAPIWebhookController
-from ..models import whatsapp_backend
+from ..models import whatsapp_backend, whatsapp_webhook
 
 
 class TestWhatsAppChatbotGreeting(TransactionCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
+        # Error texts are asserted in English; a database in another language
+        # translates them
+        cls.env = cls.env(context=dict(cls.env.context, lang="en_US"))
         cls.chatbot = cls.env["whatsapp.chatbot"].create(
             {
                 "title": "Turkish Greeting",
@@ -79,7 +80,7 @@ class TestWhatsAppChatbotGreeting(TransactionCase):
             )
 
     def test_plain_greeting_is_sent_once_per_24_hours(self):
-        controller = WhatsAppCloudAPIWebhookController()
+        processor = self.env["whatsapp.webhook"]
         with (
             trap_jobs(),
             patch.object(
@@ -89,15 +90,15 @@ class TestWhatsAppChatbotGreeting(TransactionCase):
             ),
             patch.object(type(self.thread), "send_text_message") as send_text,
         ):
-            controller._handle_greeting_only_chatbot(self.chatbot, self.thread)
-            controller._handle_greeting_only_chatbot(self.chatbot, self.thread)
+            processor._handle_greeting_only_chatbot(self.chatbot, self.thread)
+            processor._handle_greeting_only_chatbot(self.chatbot, self.thread)
 
         send_text.assert_called_once_with("Auto reply")
         self.assertEqual(self.thread.chatbot_id, self.chatbot)
         self.assertTrue(self.thread.chatbot_last_message_date)
 
     def test_incoming_survives_reply_failure_and_next_message_can_reply(self):
-        controller = WhatsAppCloudAPIWebhookController()
+        processor = self.env["whatsapp.webhook"]
         incoming = {
             "id": "greeting-incoming-test",
             "type": "text",
@@ -112,17 +113,18 @@ class TestWhatsAppChatbotGreeting(TransactionCase):
 
         with (
             trap_jobs(),
-            patch.object(webhook, "request", SimpleNamespace(env=self.env)),
-            patch.object(controller, "_find_or_create_partner", return_value=False),
             patch.object(
-                controller, "_find_or_create_thread", return_value=self.thread
+                type(processor), "_find_or_create_partner", return_value=False
+            ),
+            patch.object(
+                type(processor), "_find_or_create_thread", return_value=self.thread
             ),
             patch.object(
                 type(self.backend), "_call_whatsapp_api", side_effect=fail_reply
             ),
-            self.assertLogs(webhook.__name__, level="ERROR"),
+            self.assertLogs(whatsapp_webhook.__name__, level="ERROR"),
         ):
-            controller._process_incoming_message(self.backend, {}, incoming, {})
+            processor._process_incoming_message(self.backend, {}, incoming, {})
 
         message = self.env["whatsapp.message"].search(
             [("message_id", "=", incoming["id"]), ("backend_id", "=", self.backend.id)]
@@ -136,10 +138,11 @@ class TestWhatsAppChatbotGreeting(TransactionCase):
         incoming["id"] = "greeting-incoming-retry-test"
         with (
             trap_jobs(),
-            patch.object(webhook, "request", SimpleNamespace(env=self.env)),
-            patch.object(controller, "_find_or_create_partner", return_value=False),
             patch.object(
-                controller, "_find_or_create_thread", return_value=self.thread
+                type(processor), "_find_or_create_partner", return_value=False
+            ),
+            patch.object(
+                type(processor), "_find_or_create_thread", return_value=self.thread
             ),
             patch.object(
                 type(self.backend),
@@ -147,7 +150,7 @@ class TestWhatsAppChatbotGreeting(TransactionCase):
                 return_value={"messages": [{"id": "greeting-outgoing-test"}]},
             ),
         ):
-            controller._process_incoming_message(self.backend, {}, incoming, {})
+            processor._process_incoming_message(self.backend, {}, incoming, {})
         self.assertTrue(self.thread.chatbot_last_message_date)
         self.assertEqual(self.thread.last_message_id.direction, "outgoing")
 
@@ -163,7 +166,7 @@ class TestWhatsAppChatbotGreeting(TransactionCase):
                     "payload": {"request": {"type": "text"}},
                 }
             )
-        controller = WhatsAppCloudAPIWebhookController()
+        processor = self.env["whatsapp.webhook"]
         status = {
             "id": message.message_id,
             "status": "failed",
@@ -175,27 +178,24 @@ class TestWhatsAppChatbotGreeting(TransactionCase):
             "entry": [{"changes": [{"value": {"statuses": [status]}}]}],
         }
         with (
-            patch.object(webhook, "request", SimpleNamespace(env=self.env)),
-            self.assertLogs(webhook.__name__, level="WARNING"),
+            trap_jobs() as trap,
+            self.assertLogs(whatsapp_webhook.__name__, level="WARNING"),
         ):
-            controller._handle_webhook_payload(self.backend, payload)
+            processor._enqueue_payload(self.backend, payload)
+            trap.perform_enqueued_jobs()
         self.assertEqual(message.status, "failed")
         self.assertEqual(message.payload["request"], {"type": "text"})
         self.assertEqual(message.payload["status_update"]["errors"][0]["code"], 131026)
-        with patch.object(webhook, "request", SimpleNamespace(env=self.env)):
-            controller._process_message_status(
-                self.backend, dict(status, status="sent", timestamp="1789376400")
-            )
-            self.assertEqual(message.status, "failed")
-            controller._process_message_status(
-                self.backend, dict(status, status="read")
-            )
-            controller._process_message_status(
-                self.backend, dict(status, status="sent")
-            )
-            self.assertEqual(message.status, "read")
-            controller._process_message_status(SimpleNamespace(id=-1), status)
-            self.assertEqual(message.status, "read")
+        processor._process_message_status(
+            self.backend, dict(status, status="sent", timestamp="1789376400")
+        )
+        self.assertEqual(message.status, "failed")
+        processor._process_message_status(self.backend, dict(status, status="read"))
+        processor._process_message_status(self.backend, dict(status, status="sent"))
+        self.assertEqual(message.status, "read")
+        # Old status of an unknown message: dropped, not retried
+        processor._process_message_status(SimpleNamespace(id=-1), status)
+        self.assertEqual(message.status, "read")
 
     def test_api_error_keeps_meta_code_and_details(self):
         response = Mock(status_code=400)
@@ -222,7 +222,7 @@ class TestWhatsAppChatbotGreeting(TransactionCase):
                 self.backend._call_whatsapp_api("messages", {})
 
     def test_missing_message_id_does_not_start_greeting_cooldown(self):
-        controller = WhatsAppCloudAPIWebhookController()
+        processor = self.env["whatsapp.webhook"]
         with (
             patch.object(type(self.backend), "_call_whatsapp_api", return_value={}),
             self.assertLogs(
@@ -230,5 +230,5 @@ class TestWhatsAppChatbotGreeting(TransactionCase):
             ),
             self.assertRaisesRegex(UserError, "did not return a message ID"),
         ):
-            controller._handle_greeting_only_chatbot(self.chatbot, self.thread)
+            processor._handle_greeting_only_chatbot(self.chatbot, self.thread)
         self.assertFalse(self.thread.chatbot_last_message_date)

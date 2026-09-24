@@ -12,9 +12,9 @@ import {
 } from "@phosphor-icons/react";
 
 export default function LoginScreen({
-  ssoError,
+  hasSsoError = false,
 }: {
-  ssoError?: string | null;
+  hasSsoError?: boolean;
 }) {
   const { t } = useTranslations();
   const { theme, toggleTheme } = useTheme();
@@ -108,12 +108,12 @@ export default function LoginScreen({
             </p>
           </header>
 
-          {ssoError && (
+          {hasSsoError && (
             <div
               className="mb-5 rounded-xl border border-[rgb(var(--status-error)/0.32)] bg-[rgb(var(--status-error)/0.1)] px-4 py-3 text-sm text-[rgb(var(--status-error))]"
               role="alert"
             >
-              <strong>{t("auth.ssoError")}:</strong> {ssoError}
+              {t("auth.ssoError")}
             </div>
           )}
 

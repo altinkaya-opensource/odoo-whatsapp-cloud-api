@@ -1,6 +1,10 @@
+from odoo.tests import tagged
 from odoo.tests.common import TransactionCase
 
 
+# product.template needs the columns of modules loaded after this one
+# (sale's sale_line_warn is NOT NULL), so run once everything is installed.
+@tagged("post_install", "-at_install")
 class TestWhatsAppTemplateLanguage(TransactionCase):
     @classmethod
     def setUpClass(cls):

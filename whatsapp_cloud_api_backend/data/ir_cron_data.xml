@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<odoo noupdate="1">
+    <record id="ir_cron_refresh_message_report" model="ir.cron">
+        <field name="name">WhatsApp: Refresh Statistics</field>
+        <field name="model_id" ref="model_whatsapp_message_report" />
+        <field name="state">code</field>
+        <field name="code">model._refresh_report()</field>
+        <field name="interval_number">15</field>
+        <field name="interval_type">minutes</field>
+        <field name="numbercall">-1</field>
+        <field name="active" eval="True" />
+    </record>
+</odoo>

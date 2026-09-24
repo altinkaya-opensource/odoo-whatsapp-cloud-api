@@ -14,11 +14,13 @@ out
 build
 dist
 
-# Ignore local environment files
+# Ignore local environment files: secrets reach the container at runtime
+# (env_file), never the image. Next's standalone output would copy them in.
 .env
 .env*.local
 .env.development
 .env.test
+.env.production
 
 # Ignore IDE files
 .vscode

@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { ChatTeardropText, X } from "@phosphor-icons/react";
 import { useTranslations } from "@/app/context/translation-provider";
-import { useAuth } from "@/app/hooks/use-auth";
 
 export type SimpleTemplate = {
   id: number;
@@ -18,8 +17,6 @@ export type SimpleTemplate = {
 
 type TemplatePickerProps = {
   threadId: number;
-  phoneNumber: string;
-  backendId: number | null;
   disabled?: boolean;
   onSent?: () => void;
   triggerVariant?: "icon" | "cta";
@@ -27,14 +24,11 @@ type TemplatePickerProps = {
 
 export default function TemplatePicker({
   threadId,
-  phoneNumber,
-  backendId,
   disabled,
   onSent,
   triggerVariant = "icon",
 }: TemplatePickerProps) {
   const { t } = useTranslations();
-  const { sessionId } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [templates, setTemplates] = useState<SimpleTemplate[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -42,19 +36,10 @@ export default function TemplatePicker({
   const [sendingId, setSendingId] = useState<number | null>(null);
 
   const fetchTemplates = useCallback(async () => {
-    if (!sessionId) {
-      setError(t("template.error"));
-      return;
-    }
     setIsLoading(true);
     setError(null);
     try {
-      const query =
-        typeof backendId === "number" ? `?backendId=${backendId}` : "";
-      const response = await fetch(`/api/templates${query}`, {
-        method: "GET",
-        headers: { "x-session-id": sessionId },
-      });
+      const response = await fetch(`/api/templates?threadId=${threadId}`);
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
         const message =
@@ -68,7 +53,7 @@ export default function TemplatePicker({
     } finally {
       setIsLoading(false);
     }
-  }, [backendId, sessionId, t]);
+  }, [threadId, t]);
 
   useEffect(() => {
     if (isOpen) {
@@ -92,24 +77,15 @@ export default function TemplatePicker({
   }, [isOpen]);
 
   const handleSend = async (template: SimpleTemplate) => {
-    if (!sessionId) {
-      setError(t("template.error"));
-      return;
-    }
     setSendingId(template.id);
     setError(null);
     try {
       const response = await fetch("/api/messages/send-template", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-session-id": sessionId,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           threadId,
-          phoneNumber,
           templateId: template.id,
-          backendId: backendId ?? undefined,
         }),
       });
       const data = await response.json().catch(() => ({}));

@@ -1,9 +1,12 @@
 # Copyright (C) 2025 Ahmet Yiğit Budak
 # License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl-3.0.html)
-from odoo import api, fields, models, tools
+from odoo import SUPERUSER_ID, api, fields, models, tools
 
 from ..controllers.main import WP_ATTACHMENT_DOWNLOAD_PATH
-from .frontend_webhook import WebhookSender
+from .whatsapp_bus import queue_frontend_notification
+
+# Changes the chat view shows: sent to the frontend as "updated"
+FRONTEND_MESSAGE_FIELDS = {"body", "status", "attachment_id", "reaction_emoji"}
 
 
 class WhatsAppMessage(models.Model):
@@ -40,7 +43,8 @@ class WhatsAppMessage(models.Model):
     partner_id = fields.Many2one(
         comodel_name="res.partner",
         string="Partner",
-        ondelete="cascade",
+        # Deleting a duplicate partner must not delete the conversation
+        ondelete="set null",
         index=True,
         help="Optional partner related to the counterparty of the message.",
     )
@@ -115,13 +119,12 @@ class WhatsAppMessage(models.Model):
         required=True,
     )
 
-    read_status_ids = fields.Many2many(
-        comodel_name="whatsapp.message.read.status",
-    )
-
-    is_read_by_me = fields.Boolean(
-        string="Read by Me",
-        compute="_compute_is_read_by_me",
+    is_automated = fields.Boolean(
+        string="Automated",
+        compute="_compute_is_automated",
+        store=True,
+        help="Created by the system (crons, SMS fallback) or by the chatbot, "
+        "which answers webhooks as the public user, rather than by an agent.",
     )
 
     _sql_constraints = [
@@ -132,33 +135,22 @@ class WhatsAppMessage(models.Model):
         )
     ]
 
-    def send_webhook_payload(self, event_type):
-        """Send the message data to the frontend webhook."""
-        for message in self:
-            WebhookSender.send_message_webhook_payload(message, event_type)
+    def init(self):
+        """Index incoming messages by thread for the unread counts."""
+        res = super().init()
+        tools.create_index(
+            self.env.cr,
+            "whatsapp_message_incoming_thread_idx",
+            self._table,
+            ["thread_id", "id"],
+            where="direction = 'incoming'",
+        )
+        return res
 
     @api.model_create_multi
     def create(self, vals_list):
         res = super().create(vals_list)
-        for record in res:
-            ReadStatus = self.env["whatsapp.message.read.status"]
-            user_ids = record.backend_id.user_ids
-            for user in user_ids:
-                status = self.env["whatsapp.message.read.status"].create(
-                    {
-                        "message_id": record.id,
-                        "user_id": user.id,
-                        "is_read": record.direction == "outgoing",
-                        "read_timestamp": fields.Datetime.now()
-                        if record.direction == "outgoing"
-                        else None,
-                    }
-                )
-                ReadStatus |= status
-            record.read_status_ids = [(6, 0, ReadStatus.ids)]
-
-        # Send webhook payload for message creation
-        res.with_delay().send_webhook_payload("message.created")
+        queue_frontend_notification(res, "created")
 
         return res
 
@@ -166,26 +158,58 @@ class WhatsAppMessage(models.Model):
         res = super().write(vals)
         # A reaction is stored on the message it targets, not as a new record,
         # so the frontend only learns about it through an update event.
-        if "reaction_emoji" in vals:
-            self.with_delay().send_webhook_payload("message.updated")
+        if FRONTEND_MESSAGE_FIELDS.intersection(vals):
+            queue_frontend_notification(self, "updated")
         return res
 
-    def _compute_is_read_by_me(self):
-        for record in self:
-            read_status = record.read_status_ids.filtered(
-                lambda r: r.user_id == self.env.user
-            )
-            if read_status:
-                record.is_read_by_me = read_status.is_read
-            else:  #  if no read status found for the user, consider as read
-                record.is_read_by_me = True
+    def _frontend_payload(self):
+        """Return the message as the frontend reads it."""
+        self.ensure_one()
+        attachment = self.attachment_id
+        attachment_data = False
+        attachment_full_data = None
+        if attachment:
+            base_url = self.env["ir.config_parameter"].sudo().get_param("web.base.url")
+            attachment_data = [attachment.id, attachment.name]
+            attachment_full_data = {
+                "id": attachment.id,
+                "name": attachment.name,
+                "mimetype": attachment.mimetype,
+                "url": f"{base_url}{WP_ATTACHMENT_DOWNLOAD_PATH}{attachment.id}",
+                "file_size": attachment.file_size,
+            }
+        return {
+            "id": self.id,
+            # Required: the frontend fans this event out only to the
+            # sessions that have access to this backend.
+            "backend_id": (
+                [self.backend_id.id, self.backend_id.name] if self.backend_id else False
+            ),
+            "body": self.body,
+            "status": self.status,
+            "direction": self.direction,
+            "attachment_id": attachment_data,
+            "attachment": attachment_full_data,
+            "message_id": self.message_id,
+            "replied_message_id": (
+                [self.replied_message_id.id, self.replied_message_id.message_id]
+                if self.replied_message_id
+                else False
+            ),
+            "create_date": fields.Datetime.to_string(self.create_date) or None,
+            "create_uid": (
+                [self.create_uid.id, self.create_uid.name] if self.create_uid else False
+            ),
+            "write_date": fields.Datetime.to_string(self.write_date) or None,
+            "timestamp": self.timestamp,
+            "reaction_emoji": self.reaction_emoji,
+        }
 
-    def mark_as_read_by_user(self, user):
-        for record in self:
-            read_status = record.read_status_ids.filtered(lambda r: r.user_id == user)
-            if read_status and not read_status.is_read:
-                read_status.is_read = True
-                read_status.read_timestamp = fields.Datetime.now()
+    @api.depends("create_uid")
+    def _compute_is_automated(self):
+        for message in self:
+            creator = message.create_uid
+            message.is_automated = creator.id == SUPERUSER_ID or creator.share
 
     def name_get(self):
         direction_labels = dict(self._fields["direction"].selection)
@@ -227,42 +251,4 @@ class WhatsAppMessage(models.Model):
                         ),
                         "file_size": attachment_record.file_size,
                     }
-        return res
-
-
-class WhatsAppMessageReadStatus(models.Model):
-    _name = "whatsapp.message.read.status"
-    _description = "WhatsApp Message Read Status"
-
-    message_id = fields.Many2one(
-        comodel_name="whatsapp.message",
-        string="Message",
-        required=True,
-        ondelete="cascade",
-        index=True,
-        help="Message that has been read.",
-    )
-    user_id = fields.Many2one(
-        comodel_name="res.users",
-        string="User",
-        required=True,
-        ondelete="cascade",
-        index=True,
-        help="User who has read the message.",
-    )
-    is_read = fields.Boolean(
-        default=False,
-    )
-    read_timestamp = fields.Datetime()
-
-    def init(self):
-        """Index unread statuses for the per-user badge lookup."""
-        res = super().init()
-        tools.create_index(
-            self.env.cr,
-            "whatsapp_message_read_status_unread_user_idx",
-            self._table,
-            ["user_id"],
-            where="is_read IS NULL OR is_read = FALSE",
-        )
         return res

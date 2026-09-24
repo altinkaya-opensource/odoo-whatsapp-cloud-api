@@ -7,8 +7,9 @@ services:
       dockerfile: Dockerfile
     container_name: odoo-whatsapp-frontend
     restart: unless-stopped
+    # Only nginx may reach it: it sets X-Real-IP, which the sign-in limits trust
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
       - NODE_ENV=production
       - ODOO_JSONRPC_PROTOCOL=${ODOO_JSONRPC_PROTOCOL}

@@ -1,38 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  getOdooBaseUrl,
+  odooErrorResponse,
+  requireSession,
+} from "@/app/lib/odoo/server";
 
 // Force Node.js runtime for File/Blob support
 export const runtime = "nodejs";
 
-const REQUIRED_ENV_VARS = ["ODOO_JSONRPC_HOST"] as const;
-
-const ensureEnv = () => {
-  const missing = REQUIRED_ENV_VARS.filter((name) => !process.env[name]);
-  if (missing.length > 0) {
-    throw new Error(
-      `Missing required environment variables: ${missing.join(", ")}`
-    );
-  }
-};
+// Odoo stores at most 100 MB per file; allow for the multipart envelope
+const MAX_UPLOAD_BYTES = 101 * 1024 * 1024;
+const UPLOAD_TIMEOUT_MS = 120_000;
 
 export async function POST(request: NextRequest) {
-  try {
-    ensureEnv();
-  } catch (error) {
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Server configuration error",
-      },
-      { status: 500 }
-    );
+  // Check the session and the size before reading the body into memory
+  const auth = await requireSession(request);
+  if ("response" in auth) {
+    return auth.response;
   }
-
-  const sessionId = request.headers.get("x-session-id");
-  if (!sessionId) {
-    return NextResponse.json(
-      { error: "Missing Odoo session id" },
-      { status: 401 }
-    );
+  const contentLength = Number(request.headers.get("content-length"));
+  if (!contentLength) {
+    return NextResponse.json({ error: "File is required" }, { status: 400 });
+  }
+  if (contentLength > MAX_UPLOAD_BYTES) {
+    return NextResponse.json({ error: "File too large" }, { status: 413 });
   }
 
   try {
@@ -61,37 +52,31 @@ export async function POST(request: NextRequest) {
     odooFormData.append("file", uploadFile);
     odooFormData.append("filename", uploadFile.name);
 
-    const protocolEnv: "http" | "https" =
-      process.env.ODOO_JSONRPC_PROTOCOL === "https" ? "https" : "http";
-    const portEnv = process.env.ODOO_JSONRPC_PORT;
-    const port = portEnv ? Number(portEnv) : protocolEnv === "https" ? 443 : 80;
-
-    if (Number.isNaN(port)) {
-      return NextResponse.json(
-        { error: "ODOO_JSONRPC_PORT must be a valid number" },
-        { status: 500 }
-      );
-    }
-
-    const hasDefaultPort =
-      (protocolEnv === "http" && port === 80) ||
-      (protocolEnv === "https" && port === 443);
-    const baseURL = `${protocolEnv}://${process.env.ODOO_JSONRPC_HOST}${hasDefaultPort ? "" : `:${port}`}`;
-
     // Upload to Odoo
-    const response = await fetch(`${baseURL}/whatsapp/attachment/upload/`, {
-      method: "POST",
-      headers: {
-        Cookie: `session_id=${sessionId}`,
-      },
-      body: odooFormData,
-    });
+    const response = await fetch(
+      `${getOdooBaseUrl()}/whatsapp/attachment/upload/`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: `session_id=${auth.sessionId}`,
+        },
+        body: odooFormData,
+        signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
+      }
+    );
 
     if (!response.ok) {
-      const errorText = await response.text().catch(() => "Unknown error");
+      console.error(
+        "[Upload] Odoo refused the file:",
+        response.status,
+        await response.text().catch(() => "")
+      );
       return NextResponse.json(
         {
-          error: `Failed to upload attachment to Odoo: ${response.status} - ${errorText}`,
+          error:
+            response.status === 413
+              ? "File too large"
+              : "Failed to upload attachment to Odoo",
         },
         { status: response.status }
       );
@@ -107,14 +92,6 @@ export async function POST(request: NextRequest) {
       mimeType: uploadFile.type,
     });
   } catch (error) {
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to upload attachment",
-      },
-      { status: 500 }
-    );
+    return odooErrorResponse(error, "Failed to upload attachment");
   }
 }

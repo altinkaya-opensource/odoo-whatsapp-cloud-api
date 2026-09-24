@@ -25,13 +25,11 @@ type BackendMeta = {
 };
 
 type AuthenticatedResponse = {
-  sessionId?: string;
   user?: OdooLoginResult | null;
   backend?: BackendMeta;
 };
 
 type AuthContextValue = {
-  sessionId: string | null;
   user: OdooLoginResult | null;
   backendId: number | null;
   backendIds: number[];
@@ -47,11 +45,15 @@ type AuthContextValue = {
     password: string
   ) => Promise<{ totpRequired: boolean }>;
   verifyTotp: (code: string) => Promise<void>;
-  loginWithSessionId: (sessionId: string) => Promise<void>;
-  logout: () => void;
+  /** Ask the server whether the session cookie is still good; signs out on 401 */
+  revalidateSession: () => Promise<void>;
+  logout: () => Promise<void>;
 };
 
-const SESSION_STORAGE_KEY = "odooSessionId";
+// The session itself is in an HttpOnly cookie; the browser keeps only who
+// is signed in, to draw the app before the server answers. Older versions
+// kept the session id under this key.
+const LEGACY_SESSION_KEY = "odooSessionId";
 const SESSION_USER_KEY = "odooSessionUser";
 const SESSION_BACKEND_KEY = "odooBackendMeta";
 
@@ -62,7 +64,6 @@ export const AuthContext = createContext<AuthContextValue | undefined>(
 type AuthStatus = "checking" | "authenticated" | "unauthenticated";
 
 export default function AuthProvider({ children }: PropsWithChildren) {
-  const [sessionId, setSessionId] = useState<string | null>(null);
   const [user, setUser] = useState<OdooLoginResult | null>(null);
   const [backendId, setBackendId] = useState<number | null>(null);
   const [backendIds, setBackendIds] = useState<number[]>([]);
@@ -72,74 +73,8 @@ export default function AuthProvider({ children }: PropsWithChildren) {
   const [status, setStatus] = useState<AuthStatus>("checking");
   const [isAuthenticating, setIsAuthenticating] = useState(false);
 
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const storedSession = window.localStorage.getItem(SESSION_STORAGE_KEY);
-    const storedUser = window.localStorage.getItem(SESSION_USER_KEY);
-    const storedBackend = window.localStorage.getItem(SESSION_BACKEND_KEY);
-
-    if (storedSession) {
-      // Load cached data immediately for faster UI
-      setSessionId(storedSession);
-      if (storedUser) {
-        try {
-          setUser(JSON.parse(storedUser));
-        } catch {
-          window.localStorage.removeItem(SESSION_USER_KEY);
-        }
-      }
-      if (storedBackend) {
-        try {
-          const parsed = JSON.parse(storedBackend) as {
-            backendId?: number | null;
-            backendIds?: number[];
-            backendUserId?: number | null;
-            backendUsers?: BackendUser[];
-            backendNames?: Record<number, string>;
-          };
-          setBackendId(
-            typeof parsed.backendId === "number" ? parsed.backendId : null
-          );
-          setBackendIds(
-            Array.isArray(parsed.backendIds) ? parsed.backendIds : []
-          );
-          setBackendUserId(
-            typeof parsed.backendUserId === "number"
-              ? parsed.backendUserId
-              : null
-          );
-          setBackendUsers(
-            Array.isArray(parsed.backendUsers) ? parsed.backendUsers : []
-          );
-          setBackendNames(
-            parsed.backendNames && typeof parsed.backendNames === "object"
-              ? parsed.backendNames
-              : {}
-          );
-        } catch {
-          window.localStorage.removeItem(SESSION_BACKEND_KEY);
-        }
-      }
-      setStatus("authenticated");
-
-      // Revalidate session in background to refresh server-side cache
-      // Repopulates the server-side session cache after a restart or deploy
-      loginWithSessionId(storedSession).catch(() => {
-        // Session validation failed - user will be logged out
-        console.log("[Auth] Session revalidation failed on mount");
-      });
-    } else {
-      setStatus("unauthenticated");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Empty deps - only run on mount
-
   const persistSession = useCallback(
     (
-      newSessionId: string,
       sessionUser: OdooLoginResult | null,
       backendMeta?: {
         backendId?: number | null;
@@ -152,7 +87,6 @@ export default function AuthProvider({ children }: PropsWithChildren) {
       if (typeof window === "undefined") {
         return;
       }
-      window.localStorage.setItem(SESSION_STORAGE_KEY, newSessionId);
       if (sessionUser) {
         window.localStorage.setItem(
           SESSION_USER_KEY,
@@ -183,21 +117,12 @@ export default function AuthProvider({ children }: PropsWithChildren) {
     if (typeof window === "undefined") {
       return;
     }
-    window.localStorage.removeItem(SESSION_STORAGE_KEY);
     window.localStorage.removeItem(SESSION_USER_KEY);
     window.localStorage.removeItem(SESSION_BACKEND_KEY);
   }, []);
 
   const applyAuthenticatedResponse = useCallback(
-    ({
-      sessionId: newSessionId,
-      user: sessionUser,
-      backend,
-    }: AuthenticatedResponse) => {
-      if (!newSessionId) {
-        throw new Error("Missing session id in server response");
-      }
-
+    ({ user: sessionUser, backend }: AuthenticatedResponse) => {
       const backendUsersList: BackendUser[] = Array.isArray(backend?.users)
         ? backend.users.map((backendUser) => ({
             id: backendUser.id,
@@ -217,14 +142,13 @@ export default function AuthProvider({ children }: PropsWithChildren) {
           ? backend.backend_names
           : {};
 
-      setSessionId(newSessionId);
       setUser(sessionUser ?? null);
       setBackendId(resolvedBackendId);
       setBackendIds(resolvedBackendIds);
       setBackendUserId(resolvedBackendUserId);
       setBackendUsers(backendUsersList);
       setBackendNames(resolvedBackendNames);
-      persistSession(newSessionId, sessionUser ?? null, {
+      persistSession(sessionUser ?? null, {
         backendId: resolvedBackendId,
         backendIds: resolvedBackendIds,
         backendUserId: resolvedBackendUserId,
@@ -237,7 +161,6 @@ export default function AuthProvider({ children }: PropsWithChildren) {
   );
 
   const clearAuthentication = useCallback(() => {
-    setSessionId(null);
     setUser(null);
     setBackendId(null);
     setBackendIds([]);
@@ -324,52 +247,108 @@ export default function AuthProvider({ children }: PropsWithChildren) {
     [applyAuthenticatedResponse, clearAuthentication]
   );
 
-  const loginWithSessionId = useCallback(
-    async (providedSessionId: string) => {
-      setIsAuthenticating(true);
-      try {
-        const response = await fetch("/api/auth/validate-session", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ sessionId: providedSessionId }),
-        });
+  const revalidateSession = useCallback(async () => {
+    const response = await fetch("/api/auth/validate-session", {
+      method: "POST",
+    });
+    const data = (await response.json().catch(() => ({}))) as
+      AuthenticatedResponse | { error?: unknown };
 
-        const data = (await response.json()) as Omit<
-          AuthenticatedResponse,
-          "sessionId"
-        > & { error?: unknown };
-
-        if (!response.ok) {
-          const message =
-            typeof data?.error === "string"
-              ? data.error
-              : "Invalid or expired session ID";
-          throw new Error(message);
-        }
-
-        applyAuthenticatedResponse({
-          ...data,
-          sessionId: providedSessionId,
-        });
-      } catch (error) {
+    if (!response.ok) {
+      // Only Odoo rejecting the session ends it. A deploy or a network
+      // drop (5xx, fetch failure) keeps the user signed in to retry.
+      if (response.status === 401) {
         clearAuthentication();
-        throw error;
-      } finally {
-        setIsAuthenticating(false);
       }
-    },
-    [applyAuthenticatedResponse, clearAuthentication]
-  );
+      const error = (data as { error?: unknown }).error;
+      throw new Error(
+        typeof error === "string" ? error : "Invalid or expired session"
+      );
+    }
 
-  const logout = useCallback(() => {
+    applyAuthenticatedResponse(data as AuthenticatedResponse);
+  }, [applyAuthenticatedResponse, clearAuthentication]);
+
+  const logout = useCallback(async () => {
+    try {
+      // Ends the Odoo session too, not only this browser's cookie
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch (error) {
+      console.error("[Auth] Sign-out request failed:", error);
+    }
     clearAuthentication();
   }, [clearAuthentication]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (window.localStorage.getItem(LEGACY_SESSION_KEY)) {
+      // Signed in before sessions moved to the cookie: sign in again
+      window.localStorage.removeItem(LEGACY_SESSION_KEY);
+      window.localStorage.removeItem(SESSION_USER_KEY);
+      window.localStorage.removeItem(SESSION_BACKEND_KEY);
+    }
+    const storedUser = window.localStorage.getItem(SESSION_USER_KEY);
+    const storedBackend = window.localStorage.getItem(SESSION_BACKEND_KEY);
+
+    if (storedUser) {
+      // Draw the app from the cached user while the server checks the cookie
+      try {
+        setUser(JSON.parse(storedUser));
+      } catch {
+        window.localStorage.removeItem(SESSION_USER_KEY);
+      }
+      if (storedBackend) {
+        try {
+          const parsed = JSON.parse(storedBackend) as {
+            backendId?: number | null;
+            backendIds?: number[];
+            backendUserId?: number | null;
+            backendUsers?: BackendUser[];
+            backendNames?: Record<number, string>;
+          };
+          setBackendId(
+            typeof parsed.backendId === "number" ? parsed.backendId : null
+          );
+          setBackendIds(
+            Array.isArray(parsed.backendIds) ? parsed.backendIds : []
+          );
+          setBackendUserId(
+            typeof parsed.backendUserId === "number"
+              ? parsed.backendUserId
+              : null
+          );
+          setBackendUsers(
+            Array.isArray(parsed.backendUsers) ? parsed.backendUsers : []
+          );
+          setBackendNames(
+            parsed.backendNames && typeof parsed.backendNames === "object"
+              ? parsed.backendNames
+              : {}
+          );
+        } catch {
+          window.localStorage.removeItem(SESSION_BACKEND_KEY);
+        }
+      }
+      setStatus("authenticated");
+    }
+
+    // The cookie may also come from an Odoo sign-in link, with nothing cached
+    revalidateSession().catch(() => {
+      // Signed out if Odoo rejected the session; a cached user stays signed
+      // in to retry, anyone else gets the sign-in form
+      console.log("[Auth] Session revalidation failed on mount");
+      setStatus((current) =>
+        current === "checking" ? "unauthenticated" : current
+      );
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty deps - only run on mount
+
   const value = useMemo<AuthContextValue>(
     () => ({
-      sessionId,
       user,
       backendId,
       backendIds,
@@ -388,11 +367,10 @@ export default function AuthProvider({ children }: PropsWithChildren) {
       isAuthenticating,
       login,
       verifyTotp,
-      loginWithSessionId,
+      revalidateSession,
       logout,
     }),
     [
-      sessionId,
       user,
       backendId,
       backendIds,
@@ -403,7 +381,7 @@ export default function AuthProvider({ children }: PropsWithChildren) {
       isAuthenticating,
       login,
       verifyTotp,
-      loginWithSessionId,
+      revalidateSession,
       logout,
     ]
   );

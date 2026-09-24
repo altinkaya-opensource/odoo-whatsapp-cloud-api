@@ -16,14 +16,10 @@ const createEmptyTotpDigits = () =>
   Array.from({ length: TOTP_CODE_LENGTH }, () => "");
 
 export default function LoginForm() {
-  const { login, loginWithSessionId, verifyTotp, isAuthenticating } = useAuth();
-  const [loginMode, setLoginMode] = useState<"credentials" | "sessionId">(
-    "credentials"
-  );
+  const { login, verifyTotp, isAuthenticating } = useAuth();
   const [isTotpStep, setIsTotpStep] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [sessionId, setSessionId] = useState("");
   const [totpDigits, setTotpDigits] = useState(createEmptyTotpDigits);
   const [error, setError] = useState<string | null>(null);
   const totpInputRefs = useRef<Array<HTMLInputElement | null>>([]);
@@ -41,6 +37,8 @@ export default function LoginForm() {
         return t("auth.totpCodeRequired");
       case "totp_unavailable":
         return t("auth.totpUnavailable");
+      case "too_many_attempts":
+        return t("auth.tooManyAttempts");
       default:
         return message;
     }
@@ -53,8 +51,6 @@ export default function LoginForm() {
     try {
       if (isTotpStep) {
         await verifyTotp(totpDigits.join(""));
-      } else if (loginMode === "sessionId") {
-        await loginWithSessionId(sessionId.trim());
       } else {
         const result = await login(username.trim(), password);
         if (result.totpRequired) {
@@ -142,11 +138,7 @@ export default function LoginForm() {
 
   const isSubmitDisabled = isTotpStep
     ? totpDigits.some((digit) => !digit) || isAuthenticating
-    : loginMode === "sessionId"
-      ? sessionId.trim().length === 0 || isAuthenticating
-      : username.trim().length === 0 ||
-        password.length === 0 ||
-        isAuthenticating;
+    : username.trim().length === 0 || password.length === 0 || isAuthenticating;
 
   return (
     <form
@@ -154,39 +146,6 @@ export default function LoginForm() {
       onSubmit={handleSubmit}
       noValidate
     >
-      {!isTotpStep && (
-        <div className="flex gap-1 rounded-xl border border-[rgb(var(--border-primary)/var(--border-primary-opacity))] bg-[rgb(var(--bg-secondary))] p-1">
-          <button
-            type="button"
-            onClick={() => {
-              setError(null);
-              setLoginMode("credentials");
-            }}
-            className={`flex-1 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors ${
-              loginMode === "credentials"
-                ? "bg-[rgb(var(--bg-card))] text-[rgb(var(--accent-primary))] shadow-sm"
-                : "text-[rgb(var(--text-secondary))] hover:text-[rgb(var(--text-primary))]"
-            }`}
-          >
-            {t("auth.loginModeCredentials")}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setError(null);
-              setLoginMode("sessionId");
-            }}
-            className={`flex-1 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors ${
-              loginMode === "sessionId"
-                ? "bg-[rgb(var(--bg-card))] text-[rgb(var(--accent-primary))] shadow-sm"
-                : "text-[rgb(var(--text-secondary))] hover:text-[rgb(var(--text-primary))]"
-            }`}
-          >
-            {t("auth.loginModeSessionId")}
-          </button>
-        </div>
-      )}
-
       {isTotpStep ? (
         <div className="rounded-2xl border border-[rgb(var(--accent-primary)/0.2)] bg-[rgb(var(--accent-primary)/0.06)] p-4">
           <h3 className="text-base font-semibold text-[rgb(var(--text-primary))]">
@@ -239,7 +198,7 @@ export default function LoginForm() {
             ))}
           </div>
         </div>
-      ) : loginMode === "credentials" ? (
+      ) : (
         <>
           <div className="flex flex-col gap-2">
             <label
@@ -278,40 +237,6 @@ export default function LoginForm() {
             />
           </div>
         </>
-      ) : (
-        <div className="flex flex-col gap-2">
-          <label
-            className="text-sm font-semibold text-[rgb(var(--text-primary))]"
-            htmlFor="sessionId"
-          >
-            {t("auth.sessionIdLabel")}
-          </label>
-          <textarea
-            id="sessionId"
-            name="sessionId"
-            rows={3}
-            value={sessionId}
-            onChange={(event) => setSessionId(event.target.value)}
-            className="control-field w-full resize-none px-3.5 py-3 font-mono text-xs placeholder-[rgb(var(--text-secondary)/var(--text-quaternary-opacity))]"
-            placeholder={t("auth.sessionIdPlaceholder")}
-          />
-          <p className="text-xs text-[rgb(var(--text-secondary)/var(--text-secondary-opacity))]">
-            {t("auth.sessionIdHelp")
-              .split("<code>")
-              .map((part, i) => {
-                if (i === 0) return part;
-                const [codeContent, ...rest] = part.split("</code>");
-                return (
-                  <span key={i}>
-                    <code className="rounded bg-[rgb(var(--bg-secondary))] px-1 py-0.5">
-                      {codeContent}
-                    </code>
-                    {rest.join("</code>")}
-                  </span>
-                );
-              })}
-          </p>
-        </div>
       )}
 
       {error && (

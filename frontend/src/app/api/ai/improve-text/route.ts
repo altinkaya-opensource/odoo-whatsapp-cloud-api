@@ -1,70 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireSession } from "@/app/lib/odoo/server";
+import {
+  invalidBody,
+  odooErrorResponse,
+  parseId,
+  readJsonBody,
+  requireAgent,
+  threadNotFound,
+} from "@/app/lib/odoo/server";
 import {
   createOpenAIClient,
   isAIEnabled,
-  getOpenAIModel,
+  streamChatCompletion,
 } from "@/app/lib/ai/openai-client";
-import { Message } from "@/app/context/chats-provider";
+import {
+  CONTEXT_MESSAGES,
+  formatConversation,
+  loadConversation,
+  MAX_INPUT_CHARS,
+} from "@/app/lib/ai/conversation";
 
-type ImproveTextRequest = {
-  messages: Message[];
-  currentText: string;
-  systemPrompt?: string;
-};
-
-export async function POST(request: NextRequest) {
-  try {
-    // Check if AI feature is enabled
-    if (!isAIEnabled()) {
-      return NextResponse.json(
-        { error: "AI feature is not enabled" },
-        { status: 403 }
-      );
-    }
-
-    const auth = await requireSession(request);
-    if ("response" in auth) {
-      return auth.response;
-    }
-
-    // Parse request body
-    const body: ImproveTextRequest = await request.json();
-    const { messages, currentText, systemPrompt } = body;
-
-    // Validate that there are messages to work with
-    if (!messages || messages.length === 0) {
-      return NextResponse.json(
-        { error: "No conversation context available" },
-        { status: 400 }
-      );
-    }
-
-    // Create OpenAI client
-    const openai = createOpenAIClient();
-    if (!openai) {
-      return NextResponse.json(
-        { error: "OpenAI client configuration is missing" },
-        { status: 500 }
-      );
-    }
-
-    // Prepare conversation context (last 10 messages)
-    const last10Messages = messages.slice(-10);
-    const conversationContext = last10Messages
-      .map((msg) => {
-        const sender = msg.isSentFromUser ? "User" : "Contact";
-        return `${sender}: ${msg.message}`;
-      })
-      .join("\n");
-
-    // Determine if we're improving existing text or generating a new message
-    const hasCurrentText = currentText && currentText.trim().length > 0;
-
-    // Default system prompt if not provided
-    const defaultSystemPrompt = hasCurrentText
-      ? `You are a helpful assistant that improves WhatsApp messages. The user will provide you with:
-1. Recent conversation context (last 10 messages)
+const IMPROVE_PROMPT = `You are a helpful assistant that improves WhatsApp messages. The user will provide you with:
+1. Recent conversation context (last ${CONTEXT_MESSAGES} messages)
 2. A draft message they want to improve
 
 IMPORTANT RULES:
@@ -76,8 +32,9 @@ IMPORTANT RULES:
 - DO NOT make it formal unless the original was formal
 - DO NOT add extra information or explanations
 - DO NOT make it longer than the original unless necessary for clarity
-- Return ONLY the improved message text, nothing else`
-      : `You are a helpful assistant that generates WhatsApp message replies based on conversation history. The user will provide you with recent conversation context (last 10 messages).
+- Return ONLY the improved message text, nothing else`;
+
+const GENERATE_PROMPT = `You are a helpful assistant that generates WhatsApp message replies based on conversation history. The user will provide you with recent conversation context (last ${CONTEXT_MESSAGES} messages).
 
 IMPORTANT RULES:
 - This is for WhatsApp - keep it SHORT and casual
@@ -89,74 +46,83 @@ IMPORTANT RULES:
 - DO NOT be overly formal or verbose
 - Return ONLY the generated message text, nothing else`;
 
-    const finalSystemPrompt = systemPrompt || defaultSystemPrompt;
+/**
+ * Improve the draft, or write a reply when there is none, from the end of
+ * the thread as Odoo has it.
+ */
+export async function POST(request: NextRequest) {
+  if (!isAIEnabled()) {
+    return NextResponse.json(
+      { error: "AI feature is not enabled" },
+      { status: 403 }
+    );
+  }
 
-    // Prepare user prompt
-    const userPrompt = hasCurrentText
+  const auth = await requireAgent(request);
+  if ("response" in auth) {
+    return auth.response;
+  }
+
+  const body = await readJsonBody(request);
+  if (!body) {
+    return invalidBody();
+  }
+  const threadId = parseId(body.threadId);
+  if (!threadId) {
+    return NextResponse.json(
+      { error: "threadId must be a valid number" },
+      { status: 400 }
+    );
+  }
+  const currentText =
+    typeof body.currentText === "string" ? body.currentText.trim() : "";
+  if (currentText.length > MAX_INPUT_CHARS) {
+    return NextResponse.json({ error: "Text is too long" }, { status: 413 });
+  }
+
+  const openai = createOpenAIClient();
+  if (!openai) {
+    return NextResponse.json(
+      { error: "OpenAI client configuration is missing" },
+      { status: 500 }
+    );
+  }
+
+  try {
+    const conversation = await loadConversation(auth.session, threadId);
+    if (!conversation) {
+      return threadNotFound();
+    }
+    if (conversation.messages.length === 0) {
+      return NextResponse.json(
+        { error: "No conversation context available" },
+        { status: 400 }
+      );
+    }
+
+    const context = formatConversation(conversation.messages, {
+      user: "User",
+      contact: "Contact",
+    });
+    const userPrompt = currentText
       ? `Here is the recent conversation context:
 
-${conversationContext}
+${context}
 
 Please improve the following message:
 ${currentText}`
       : `Here is the recent conversation context:
 
-${conversationContext}
+${context}
 
 Please generate an appropriate response message based on this conversation.`;
 
-    // Call OpenAI API with streaming
-    const stream = await openai.chat.completions.create({
-      model: getOpenAIModel(),
-      messages: [
-        {
-          role: "system",
-          content: finalSystemPrompt,
-        },
-        {
-          role: "user",
-          content: userPrompt,
-        },
-      ],
-      max_completion_tokens: 500,
-      stream: true,
-    });
-
-    // Create a readable stream for the response
-    const encoder = new TextEncoder();
-    const readableStream = new ReadableStream({
-      async start(controller) {
-        try {
-          for await (const chunk of stream) {
-            const content = chunk.choices[0]?.delta?.content;
-            if (content) {
-              const data = `data: ${JSON.stringify({ content })}\n\n`;
-              controller.enqueue(encoder.encode(data));
-            }
-          }
-          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-          controller.close();
-        } catch (error) {
-          console.error("Streaming error:", error);
-          controller.error(error);
-        }
-      },
-    });
-
-    return new Response(readableStream, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-      },
-    });
-  } catch (error) {
-    console.error("AI improve text error:", error);
-    const errorMessage =
-      error instanceof Error ? error.message : "Unknown error occurred";
-    return NextResponse.json(
-      { error: `Failed to improve text: ${errorMessage}` },
-      { status: 500 }
+    return await streamChatCompletion(
+      openai,
+      currentText ? IMPROVE_PROMPT : GENERATE_PROMPT,
+      userPrompt
     );
+  } catch (error) {
+    return odooErrorResponse(error, "Failed to improve text");
   }
 }

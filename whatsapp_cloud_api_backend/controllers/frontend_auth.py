@@ -1,10 +1,8 @@
 # Copyright 2025 Erol Develi (https://github.com/erlinberg)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl).
 
-from urllib.parse import quote
-
 from odoo import http
-from odoo.http import request
+from odoo.http import get_default_session, request, root
 
 
 class WhatsAppFrontendAuthController(http.Controller):
@@ -20,8 +18,7 @@ class WhatsAppFrontendAuthController(http.Controller):
 
         This endpoint:
         1. Checks if the current user has assigned WhatsApp backends
-        2. Extracts the frontend URL from the backend's webhook URL
-        3. Returns an SSO URL with the current session ID
+        2. Returns a one-time sign-in link to the frontend of the first one
 
         Returns:
             dict: {'url': str} with SSO URL, or {'error': str} if not available
@@ -44,15 +41,28 @@ class WhatsAppFrontendAuthController(http.Controller):
                 "Please contact your administrator."
             }
 
-        # Extract base URL from webhook URL
-        # The webhook URL typically ends with /api/webhooks/whatsapp
-        frontend_webhook_url = backends.frontend_webhook_url
-        base_url = frontend_webhook_url.replace("/api/webhooks/whatsapp", "")
+        return {"url": backends._get_frontend_login_url()}
 
-        # Get current session ID
-        session_id = request.session.sid
+    @http.route(
+        "/whatsapp/frontend/sso/exchange",
+        type="json",
+        auth="public",
+        methods=["POST"],
+        csrf=False,
+    )
+    def exchange_sso_code(self, code=None, **kwargs):
+        """Trade a sign-in code for a new session of its user.
 
-        # Construct SSO URL with properly encoded session ID
-        sso_url = f"{base_url}/api/auth/sso-login?session={quote(session_id, safe='')}"
-
-        return {"url": sso_url}
+        Called by the frontend's server, which has no session yet. The code
+        works once, for a minute. The session is a new one, so signing out
+        of the frontend does not sign the user out of Odoo.
+        """
+        user = request.env["whatsapp.frontend.sso"].sudo()._redeem(code)
+        if not user:
+            return {"error": "invalid_code"}
+        session = root.session_store.new()
+        session.update(get_default_session(), db=request.db)
+        session.update(pre_login=user.login, pre_uid=user.id)
+        session.finalize(request.env)
+        root.session_store.save(session)
+        return {"session_id": session.sid}

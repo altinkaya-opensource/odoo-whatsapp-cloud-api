@@ -13,7 +13,6 @@ import ConversationContext from "./components/conversation-context";
 import TabIcons from "./components/tab-icons";
 import TabPanel from "./components/tab-panel";
 import ChatsProvider from "./context/chats-provider";
-import ContactsProvider from "./context/contacts-provider";
 import CurrentChatProvider from "./context/current-chat-provider";
 import ProfileProvider from "./context/profile-provider";
 import TabProvider from "./context/tab-provider";
@@ -26,6 +25,8 @@ import {
 } from "./context/translation-provider";
 import { ThemeProvider } from "./context/theme-provider";
 import ConnectionProvider from "./context/connection-provider";
+import QueryProvider from "./context/query-provider";
+import RealtimeProvider from "./context/realtime-provider";
 import ConnectionOverlay from "./components/connection-overlay";
 import {
   MobileNavigationProvider,
@@ -102,13 +103,7 @@ function AutoSelectChat() {
       // Load the chat
       loadCurrentChat({
         chatId: targetChat.id,
-        contact: null,
-        messages: [],
-        group: null,
         page: 0,
-        isLoading: true,
-        isPaginationLoading: false,
-        hasMoreMessages: true,
         threadName: targetChat.threadName || null,
         phoneNumber: targetChat.phoneNumber || null,
         backendId: targetChat.backendId || null,
@@ -158,9 +153,6 @@ function NotificationRouter() {
       loadCurrentChat({
         chatId: target.id,
         page: 0,
-        messages: [],
-        contact: null,
-        group: null,
         threadName: target.threadName ?? null,
         phoneNumber: target.phoneNumber ?? null,
         backendId: target.backendId ?? null,
@@ -177,9 +169,8 @@ function NotificationRouter() {
 }
 
 function ResponsiveLayout() {
-  const { isMobile, isInitialized } = useResponsive();
+  const { isMobile } = useResponsive();
   const { currentView } = useMobileNavigation();
-  const { t } = useTranslations();
   // The grid only renders after hydration, so reading storage here cannot
   // cause a server/client markup mismatch.
   const [isContextCollapsed, setIsContextCollapsed] = useState(
@@ -198,22 +189,6 @@ function ResponsiveLayout() {
       // Blocked storage: the choice lasts until the page reloads
     }
   };
-
-  // Use a shaped loading state instead of a blank page while responsive
-  // layout information becomes available after hydration.
-  if (!isInitialized) {
-    return (
-      <section className="app-shell flex h-[100dvh] items-center justify-center p-6">
-        <div className="surface-card flex w-full max-w-sm flex-col gap-5 rounded-2xl p-6">
-          <div className="h-3 w-24 animate-pulse rounded-full bg-[rgb(var(--bg-tertiary))]" />
-          <div className="h-9 w-3/4 animate-pulse rounded-xl bg-[rgb(var(--bg-secondary))]" />
-          <p className="text-sm text-[rgb(var(--text-secondary))]">
-            {t("app.loadingWorkspace")}
-          </p>
-        </div>
-      </section>
-    );
-  }
 
   // Mobile layout: single panel view
   if (isMobile) {
@@ -278,7 +253,7 @@ function AppShell() {
   return (
     <ProfileProvider>
       <TabProvider>
-        <ContactsProvider>
+        <RealtimeProvider>
           <ChatsProvider includeThreadId={initialThreadId}>
             <PageTitleUpdater />
             <CurrentChatProvider>
@@ -289,7 +264,7 @@ function AppShell() {
               </MobileNavigationProvider>
             </CurrentChatProvider>
           </ChatsProvider>
-        </ContactsProvider>
+        </RealtimeProvider>
       </TabProvider>
     </ProfileProvider>
   );
@@ -306,78 +281,24 @@ function TabSyncGuard() {
 }
 
 function AuthenticatedApp() {
-  const { isAuthenticated, isCheckingAuth, loginWithSessionId } = useAuth();
+  const { isAuthenticated, isCheckingAuth } = useAuth();
   const { t } = useTranslations();
-  const [isSsoLoading, setIsSsoLoading] = useState(false);
-  const [ssoError, setSsoError] = useState<string | null>(null);
-  const [isClient, setIsClient] = useState(false);
+  const [hasSsoError, setHasSsoError] = useState(false);
   const [initialThreadId, setInitialThreadId] = useState<string | null>(null);
-  const ssoAttemptedRef = useRef(false);
 
-  // Mark as client-side after hydration to prevent hydration mismatch
+  // An Odoo sign-in link lands here after /api/auth/sso-login has set the
+  // session cookie, with the conversation to open or the error
   useEffect(() => {
-    setIsClient(true);
-  }, []);
-
-  // Auto-login from SSO parameter
-  useEffect(() => {
-    if (!isClient || ssoAttemptedRef.current) return;
-
     const params = new URLSearchParams(window.location.search);
-    const ssoSession = params.get("sso_session");
     const threadId = params.get("thread_id");
     const error = params.get("error");
-
-    // Store thread_id for later use (before cleaning URL)
-    if (threadId) {
-      setInitialThreadId(threadId);
-    }
-
-    // Handle error from SSO endpoint
-    if (error) {
-      setSsoError(error);
-      ssoAttemptedRef.current = true;
-      // Clean URL
-      window.history.replaceState({}, "", "/");
+    if (!threadId && !error) {
       return;
     }
-
-    // Perform SSO login if parameter exists and not already authenticated
-    if (ssoSession && !isAuthenticated && !isCheckingAuth) {
-      ssoAttemptedRef.current = true;
-      setIsSsoLoading(true);
-      // Clean URL immediately (before async operation to prevent bookmark with session)
-      window.history.replaceState({}, "", "/");
-
-      // Perform login using existing auth flow
-      loginWithSessionId(ssoSession)
-        .then(() => {
-          // Success - auth state will update and component will re-render
-          setIsSsoLoading(false);
-        })
-        .catch((err) => {
-          console.error("[SSO] Auto-login failed:", err);
-          setSsoError(
-            err.message || "SSO login failed. Please try logging in manually."
-          );
-          setIsSsoLoading(false);
-        });
-    }
-  }, [isClient, isAuthenticated, isCheckingAuth, loginWithSessionId]);
-
-  // Show SSO loading state (only check after client hydration)
-  if (isSsoLoading) {
-    return (
-      <section className="app-shell flex min-h-[100dvh] w-full items-center justify-center p-6 text-[rgb(var(--text-primary))]">
-        <div className="surface-card w-full max-w-sm rounded-2xl p-8 text-center">
-          <div className="mx-auto mb-4 inline-block size-10 animate-spin rounded-full border-[3px] border-[rgb(var(--accent-primary)/0.24)] border-t-[rgb(var(--accent-primary))]" />
-          <p className="text-lg text-[rgb(var(--text-secondary)/var(--text-tertiary-opacity))]">
-            {t("auth.ssoLoggingIn") || "Logging in from Odoo..."}
-          </p>
-        </div>
-      </section>
-    );
-  }
+    setInitialThreadId(threadId);
+    setHasSsoError(Boolean(error));
+    window.history.replaceState({}, "", "/");
+  }, []);
 
   if (isCheckingAuth) {
     return (
@@ -393,7 +314,7 @@ function AuthenticatedApp() {
   }
 
   if (!isAuthenticated) {
-    return <LoginScreen ssoError={ssoError} />;
+    return <LoginScreen hasSsoError={hasSsoError} />;
   }
 
   return (
@@ -411,7 +332,9 @@ export default function Home() {
         <TabSyncProvider>
           <AuthProvider>
             <ConnectionProvider>
-              <AuthenticatedApp />
+              <QueryProvider>
+                <AuthenticatedApp />
+              </QueryProvider>
             </ConnectionProvider>
           </AuthProvider>
         </TabSyncProvider>

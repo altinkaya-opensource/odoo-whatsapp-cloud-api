@@ -1,12 +1,10 @@
 "use client";
 
-import { UserIcon, UsersThreeIcon } from "@phosphor-icons/react";
+import { UserIcon } from "@phosphor-icons/react";
 import Image from "next/image";
 import { PropsWithChildren, useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "@/app/context/theme-provider";
 import { getAvatarColors, type AvatarSeed } from "@/app/lib/avatar-colors";
-
-type ProfileKind = "person" | "group";
 
 function getInitials(label: string | undefined) {
   const normalizedLabel = label?.trim();
@@ -36,13 +34,11 @@ export default function Profile({
   url,
   alt = "profile",
   seed,
-  kind = "person",
 }: PropsWithChildren<{
   size?: string;
   url?: string;
   alt?: string;
   seed?: AvatarSeed;
-  kind?: ProfileKind;
 }>) {
   const [imageError, setImageError] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
@@ -82,14 +78,6 @@ export default function Profile({
   }, [url]);
 
   const renderFallback = () => {
-    if (kind === "group") {
-      return (
-        <div className="flex size-full items-center justify-center bg-[rgb(var(--accent-primary)/0.14)] text-[rgb(var(--accent-primary))]">
-          <UsersThreeIcon className="size-[58%]" weight="fill" />
-        </div>
-      );
-    }
-
     return (
       <div
         className="flex size-full items-center justify-center"

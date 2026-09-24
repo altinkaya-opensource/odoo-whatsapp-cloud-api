@@ -1,24 +1,16 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { getOdooBaseUrl, requireSession } from "@/app/lib/odoo/server";
 
-export async function GET() {
-  const protocol = process.env.ODOO_JSONRPC_PROTOCOL || "http";
-  const host = process.env.ODOO_JSONRPC_HOST;
-  const port = process.env.ODOO_JSONRPC_PORT;
-
-  if (!host) {
-    return NextResponse.json(
-      { error: "ODOO_JSONRPC_HOST not configured" },
-      { status: 500 }
-    );
-  }
-
-  // Build base URL
-  let baseUrl = `${protocol}://${host}`;
-  if (port && port !== "80" && port !== "443") {
-    baseUrl += `:${port}`;
+export async function GET(request: NextRequest) {
+  const auth = await requireSession(request);
+  if ("response" in auth) {
+    return auth.response;
   }
 
   return NextResponse.json({
-    odooBaseUrl: baseUrl,
+    // Where users open Odoo, when JSON-RPC goes through an internal address
+    odooBaseUrl: process.env.ODOO_PUBLIC_URL || getOdooBaseUrl(),
+    // Reply suggestions need the RAG service; without it the UI hides them
+    suggestionsEnabled: Boolean(process.env.RAG_SUPPORTED_CHAT_URL),
   });
 }

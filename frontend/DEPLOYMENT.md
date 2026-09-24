@@ -53,7 +53,7 @@ docker build -t odoo-whatsapp-frontend .
 # Run the container
 docker run -d \
   --name odoo-whatsapp-frontend \
-  -p 3000:3000 \
+  -p 127.0.0.1:3000:3000 \
   --env-file .env.production \
   odoo-whatsapp-frontend
 ```
@@ -80,6 +80,16 @@ server {
     ssl_certificate /path/to/cert.pem;
     ssl_certificate_key /path/to/key.pem;
 
+    # Realtime events: an open stream per tab, never buffered
+    location /api/events {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Connection '';
+        proxy_buffering off;
+        proxy_read_timeout 1h;
+        proxy_set_header Host $host;
+    }
+
     location / {
         proxy_pass http://localhost:3000;
         proxy_http_version 1.1;
@@ -94,13 +104,18 @@ server {
 }
 ```
 
-### Option 2: Direct Deployment with Custom Port
+The sign-in limits count failed attempts per `X-Real-IP`, which nginx sets.
+Publish the container on `127.0.0.1` only (as `docker-compose.yml` does), so
+nobody reaches Next around nginx with a forged `X-Real-IP`.
 
-Modify `docker-compose.yml` to expose a different port:
+### Option 2: A Different Local Port
+
+Modify `docker-compose.yml` to use a different port, still on `127.0.0.1`
+behind the reverse proxy:
 
 ```yaml
 ports:
-  - "8080:3000"
+  - "127.0.0.1:8080:3000"
 ```
 
 ## Docker Commands Reference
@@ -151,21 +166,24 @@ docker compose up -d
 
 ## Environment Variables
 
-| Variable                 | Description                                          | Example                     |
-| ------------------------ | ---------------------------------------------------- | --------------------------- |
-| `ODOO_JSONRPC_PROTOCOL`  | Protocol for Odoo connection                         | `https` or `http`           |
-| `ODOO_JSONRPC_HOST`      | Odoo server hostname/IP                              | `odoo.example.com`          |
-| `ODOO_JSONRPC_PORT`      | Odoo server port                                     | `443`, `8069`               |
-| `ODOO_JSONRPC_DATABASE`  | Odoo database name                                   | `production_db`             |
-| `ODOO_WEBHOOK_SECRET`    | Signs webhooks from Odoo; must match the backend     | `openssl rand -hex 32`      |
-| `AI_CHAT_ENABLED`        | Turns the AI reply helpers on                        | `false`                     |
-| `OPENAI_BASE_URL`        | OpenAI-compatible endpoint, when AI is on            | `https://api.openai.com/v1` |
-| `OPENAI_API_KEY`         | Key for that endpoint                                |                             |
-| `OPENAI_MODEL`           | Model name, defaults to `openai/gpt-4o`              |                             |
-| `RAG_SUPPORTED_CHAT_URL` | RAG service for suggested replies; empty disables it |                             |
+| Variable                 | Description                                           | Example                            |
+| ------------------------ | ----------------------------------------------------- | ---------------------------------- |
+| `ODOO_JSONRPC_PROTOCOL`  | Protocol for Odoo connection                          | `https` or `http`                  |
+| `ODOO_JSONRPC_HOST`      | Odoo server hostname/IP                               | `odoo.example.com`                 |
+| `ODOO_JSONRPC_PORT`      | Odoo server port                                      | `443`, `8069`                      |
+| `ODOO_JSONRPC_DATABASE`  | Odoo database name                                    | `production_db`                    |
+| `ODOO_WEBSOCKET_URL`     | Odoo's bus websocket, if not `/websocket` on JSON-RPC | `wss://odoo.example.com/websocket` |
+| `ODOO_PUBLIC_URL`        | Odoo address for links, if JSON-RPC is internal       | `https://odoo.example.com`         |
+| `AI_CHAT_ENABLED`        | Turns the AI reply helpers on                         | `false`                            |
+| `OPENAI_BASE_URL`        | OpenAI-compatible endpoint, when AI is on             | `https://api.openai.com/v1`        |
+| `OPENAI_API_KEY`         | Key for that endpoint                                 |                                    |
+| `OPENAI_MODEL`           | Model name, defaults to `openai/gpt-4o`               |                                    |
+| `RAG_SUPPORTED_CHAT_URL` | RAG service for suggested replies; empty disables it  |                                    |
 
-Without `ODOO_WEBHOOK_SECRET` the webhook endpoint returns 500 and no message
-reaches the browser in real time.
+Real-time updates come from Odoo's bus: the Next.js server keeps one
+websocket to Odoo per signed-in session. A multi-worker Odoo serves
+`/websocket` on its gevent port, so point `ODOO_WEBSOCKET_URL` at the URL nginx
+routes to it (the same one the Odoo web client uses).
 
 ## Health Check
 
@@ -208,12 +226,10 @@ docker compose build --no-cache
 
 ## Security
 
-- Keep `.env.production` out of version control; it holds the Odoo credentials
-  and the webhook secret.
+- Keep `.env.production` out of version control; it holds the Odoo connection
+  and AI keys.
 - Terminate TLS at the reverse proxy. Session ids travel in request headers and
   in the SSE query string.
-- Generate a fresh `ODOO_WEBHOOK_SECRET` per environment and set the same value
-  on the WhatsApp backend record in Odoo.
 
 ## Backup
 

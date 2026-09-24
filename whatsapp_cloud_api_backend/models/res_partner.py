@@ -1,10 +1,7 @@
 # Copyright 2025 Erol Develi (https://github.com/erlinberg)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl).
 
-from urllib.parse import quote
-
 from odoo import fields, models
-from odoo.http import request
 
 
 class ResPartner(models.Model):
@@ -20,6 +17,8 @@ class ResPartner(models.Model):
         inverse_name="partner_id",
         string="WhatsApp Threads",
     )
+    # Incoming WhatsApp messages look their sender up by this exact value
+    phone_sanitized = fields.Char(index="btree_not_null")
 
     def _compute_has_whatsapp_conversation(self):
         """Compute whether the partner has any WhatsApp conversation threads."""
@@ -37,29 +36,14 @@ class ResPartner(models.Model):
 
         This method:
         1. Finds the most recent WhatsApp thread for this partner
-        2. Generates an SSO URL with the thread ID
+        2. Generates a one-time sign-in link with the thread ID
         3. Returns an action to open the URL in a new browser tab
         """
         self.ensure_one()
         thread = fields.first(self.whatsapp_thread_ids)
-        backend = thread.backend_id
-        # Extract base URL from webhook URL
-        frontend_webhook_url = backend.frontend_webhook_url
-        base_url = frontend_webhook_url.replace("/api/webhooks/whatsapp", "")
-
-        # Get current session ID
-        session_id = request.session.sid
-
-        # Construct SSO URL with thread ID parameter
-        sso_url = (
-            f"{base_url}/api/auth/sso-login"
-            f"?session={quote(session_id, safe='')}"
-            f"&thread_id={thread.id}"
-        )
-
         return {
             "type": "ir.actions.act_url",
-            "url": sso_url,
+            "url": thread.backend_id._get_frontend_login_url(thread),
             "target": "new",
         }
 

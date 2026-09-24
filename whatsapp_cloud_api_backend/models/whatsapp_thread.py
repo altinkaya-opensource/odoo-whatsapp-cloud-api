@@ -7,7 +7,17 @@ import time
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError
 
-from .frontend_webhook import WebhookSender
+from .whatsapp_bus import queue_frontend_notification
+
+# Fields of the chat list: chatbot bookkeeping writes do not notify
+FRONTEND_THREAD_FIELDS = {
+    "name",
+    "phone_number",
+    "partner_id",
+    "last_message_id",
+    "last_message_date",
+    "last_message_preview",
+}
 
 _logger = logging.getLogger(__name__)
 
@@ -50,6 +60,11 @@ class WhatsAppThread(models.Model):
         readonly=True,
     )
     last_message_date = fields.Datetime(readonly=True, index=True)
+    last_incoming_message_id = fields.Many2one(
+        comodel_name="whatsapp.message",
+        readonly=True,
+        help="Newest customer message, compared with each reader's cursor.",
+    )
     last_message_preview = fields.Text(readonly=True)
 
     unread_count = fields.Integer(
@@ -94,11 +109,6 @@ class WhatsAppThread(models.Model):
         )
     ]
 
-    def send_webhook_payload(self, event_type):
-        """Send the thread data to the frontend webhook."""
-        for thread in self:
-            WebhookSender.send_thread_webhook_payload(thread, event_type)
-
     @api.depends("partner_id", "partner_id.avatar_256")
     def _compute_has_avatar(self):
         """Compute whether the partner has an actual avatar image.
@@ -121,25 +131,31 @@ class WhatsAppThread(models.Model):
                 partner_by_thread.get(record.id) in partner_ids_with_avatar
             )
 
+    @api.depends_context("uid")
     def _compute_unread_count(self):
-        """Compute the current user's unread count for each thread.
+        """Count the current user's unread messages for each thread.
 
-        One search for the whole recordset instead of one per thread: the
-        chat list reads this field for every row it shows.
+        One aggregate query for the whole recordset: the chat list reads
+        this field for every row it shows.
         """
-        counts = {thread_id: 0 for thread_id in self.ids}
-
+        counts = {}
         if self.ids:
-            statuses = self.env["whatsapp.message.read.status"].search(
-                [
-                    ("message_id.thread_id", "in", self.ids),
-                    ("is_read", "=", False),
-                    ("user_id", "=", self.env.user.id),
-                ]
+            self.env["whatsapp.message"].flush_model(["thread_id", "direction"])
+            self.env["whatsapp.thread.member"].flush_model()
+            self.env.cr.execute(
+                """
+                SELECT m.thread_id, count(*)
+                  FROM whatsapp_message m
+                  LEFT JOIN whatsapp_thread_member tm
+                         ON tm.thread_id = m.thread_id AND tm.user_id = %(uid)s
+                 WHERE m.thread_id IN %(thread_ids)s
+                   AND m.direction = 'incoming'
+                   AND m.id > COALESCE(tm.seen_message_cursor, 0)
+                 GROUP BY m.thread_id
+                """,
+                {"uid": self.env.uid, "thread_ids": tuple(self.ids)},
             )
-            for thread_id in statuses.mapped("message_id").mapped("thread_id.id"):
-                counts[thread_id] = counts.get(thread_id, 0) + 1
-
+            counts = dict(self.env.cr.fetchall())
         for thread in self:
             thread.unread_count = counts.get(thread.id, 0)
 
@@ -148,26 +164,58 @@ class WhatsAppThread(models.Model):
         """Find the threads holding unread messages for the current user.
 
         Only ("unread_count", ">", 0) is supported: the chat list's unread
-        filter. A user can hold tens of thousands of unread statuses, so they
-        stay in a subquery instead of being loaded as records.
+        filter.
         """
         if (operator, value) != (">", 0):
             raise NotImplementedError(
                 f"Unsupported unread_count search: {operator} {value}"
             )
-        read_status = self.env["whatsapp.message.read.status"]
-        unread_statuses = read_status._search(
-            [("is_read", "=", False), ("user_id", "=", self.env.user.id)]
+        self.flush_model(["last_incoming_message_id"])
+        self.env["whatsapp.thread.member"].flush_model()
+        query = """
+            SELECT t.id
+              FROM whatsapp_thread t
+              LEFT JOIN whatsapp_thread_member tm
+                     ON tm.thread_id = t.id AND tm.user_id = %s
+             WHERE t.last_incoming_message_id > COALESCE(tm.seen_message_cursor, 0)
+        """
+        return [("id", "inselect", (query, (self.env.uid,)))]
+
+    @api.model
+    def _get_unread_message_count(self, limit=None):
+        """Count the current user's unread messages on their backends."""
+        backends = self.env["whatsapp.backend"].search(
+            [("user_ids", "in", self.env.uid)]
         )
-        message_alias = unread_statuses.join(
-            read_status._table,
-            "message_id",
-            self.env["whatsapp.message"]._table,
-            "id",
-            "message_id",
+        if not backends:
+            return 0
+        self.env["whatsapp.message"].flush_model(["thread_id", "direction"])
+        self.flush_model(["backend_id", "last_incoming_message_id"])
+        self.env["whatsapp.thread.member"].flush_model()
+        self.env.cr.execute(
+            """
+            SELECT count(*) FROM (
+                SELECT 1
+                  FROM whatsapp_thread t
+                  LEFT JOIN whatsapp_thread_member tm
+                         ON tm.thread_id = t.id AND tm.user_id = %(uid)s
+                  JOIN whatsapp_message m
+                    ON m.thread_id = t.id
+                   AND m.direction = 'incoming'
+                   AND m.id > COALESCE(tm.seen_message_cursor, 0)
+                 WHERE t.backend_id IN %(backend_ids)s
+                   AND t.last_incoming_message_id
+                       > COALESCE(tm.seen_message_cursor, 0)
+                 LIMIT %(limit)s
+            ) unread
+            """,
+            {
+                "uid": self.env.uid,
+                "backend_ids": tuple(backends.ids),
+                "limit": limit,
+            },
         )
-        thread_ids = unread_statuses.subselect(f'"{message_alias}"."thread_id"')
-        return [("id", "inselect", thread_ids)]
+        return self.env.cr.fetchone()[0]
 
     def read(self, fields=None, load="_classic_read"):
         """Override to bypass res.partner record rules when reading partner_id.
@@ -220,11 +268,7 @@ class WhatsAppThread(models.Model):
                 vals.get("partner_id"), vals.get("phone_number")
             )
         thread = super().create(vals)
-
-        # Push the new thread to
-        # frontend webhook
-
-        thread.with_delay().send_webhook_payload("thread.created")
+        queue_frontend_notification(thread, "created")
 
         return thread
 
@@ -240,11 +284,35 @@ class WhatsAppThread(models.Model):
                 if new_name != thread.name:
                     super(WhatsAppThread, thread).write({"name": new_name})
 
-        # Push the updated thread to
-        # frontend webhook
-        self.with_delay().send_webhook_payload("thread.updated")
+        if FRONTEND_THREAD_FIELDS.intersection(vals):
+            queue_frontend_notification(self, "updated")
 
         return res
+
+    def _frontend_payload(self):
+        """Return the thread as the frontend's chat list reads it.
+
+        unread_count is deliberately absent: it is per user, while the
+        notification goes to every member of the backend. Each client keeps
+        its own count and re-syncs it from /whatsapp/unread_count.
+        """
+        self.ensure_one()
+        return {
+            "id": self.id,
+            "name": self.name,
+            "last_message_date": fields.Datetime.to_string(self.last_message_date)
+            or None,
+            "last_message_preview": self.last_message_preview,
+            "phone_number": self.phone_number,
+            "backend_id": (
+                [self.backend_id.id, self.backend_id.name] if self.backend_id else False
+            ),
+            "write_date": fields.Datetime.to_string(self.write_date) or None,
+            "partner_id": (
+                [self.partner_id.id, self.partner_id.name] if self.partner_id else False
+            ),
+            "has_avatar": bool(self.partner_id and self.partner_id.avatar_256),
+        }
 
     def _register_message(self, message_record):
         """Attach the WhatsApp message to the thread and update metadata."""
@@ -257,6 +325,8 @@ class WhatsAppThread(models.Model):
             "last_message_date": message_record.create_date,
             "last_message_preview": message_record.body or False,
         }
+        if message_record.direction == "incoming":
+            updates["last_incoming_message_id"] = message_record.id
         if message_record.partner_id and not self.partner_id:
             updates["partner_id"] = message_record.partner_id.id
         self.sudo().write(updates)
@@ -293,14 +363,30 @@ class WhatsAppThread(models.Model):
             return media_id
         if attachment:
             if isinstance(attachment, int):
-                attachment = self.env["ir.attachment"].browse(attachment).sudo()
+                # The id comes from the browser: send only what the user can read
+                attachment = self.env["ir.attachment"].sudo(False).browse(attachment)
+                attachment.check("read")
+                attachment = attachment.sudo()
             return self.backend_id._upload_media_to_whatsapp(attachment)
         return None
+
+    def _find_thread_message(self, whatsapp_message_id):
+        """Return this thread's message with the given WhatsApp message id."""
+        self.ensure_one()
+        return (
+            self.env["whatsapp.message"]
+            .sudo()
+            .search(
+                [("thread_id", "=", self.id), ("message_id", "=", whatsapp_message_id)],
+                limit=1,
+            )
+        )
 
     def _send_message(
         self, *, payload, message_type, body=None, attachment=None, extra_vals=None
     ):
         self.ensure_one()
+        self.check_access_rule("read")
         backend = self.backend_id
         if not backend:
             raise UserError(_("A WhatsApp backend is required to send messages."))
@@ -345,10 +431,8 @@ class WhatsAppThread(models.Model):
             vals.update(extra_vals)
 
         if message_type == "reaction":
-            message_record = (
-                self.env["whatsapp.message"]
-                .sudo()
-                .search([("message_id", "=", base_payload["reaction"]["message_id"])])
+            message_record = self._find_thread_message(
+                base_payload["reaction"]["message_id"]
             )
             if message_record:
                 message_record.write({"reaction_emoji": body})
@@ -367,67 +451,19 @@ class WhatsAppThread(models.Model):
         }
 
     def mark_as_read(self):
-        """
-        Mark all incoming messages in this thread as read.
-        Called when user opens a thread in the frontend.
-        """
-        messages = (
-            self.env["whatsapp.message.read.status"]
-            .search(
-                [
-                    ("message_id.thread_id", "=", self.id),
-                    ("is_read", "=", False),
-                    ("user_id", "=", self.env.user.id),
-                ]
-            )
-            .mapped("message_id")
-        )
-        for msg in messages:
-            msg.mark_as_read_by_user(self.env.user)
-
+        """Mark these threads read for the current user (opened in the frontend)."""
+        self.check_access_rule("read")
+        self.env["whatsapp.thread.member"].sudo()._mark_seen(self, self.env.user)
         return True
 
     @api.model
     def mark_all_as_read(self, backend_ids):
-        """
-        Mark ALL unread messages as read for the current user.
-        Works across all threads, not just loaded ones.
-
-        Args:
-            backend_ids: Optional list of backend IDs to filter.
-                        If None, uses all backends the user has access to.
-        """
-        user = self.env.user
-
+        """Mark every thread of these backends read for the current user."""
         if not backend_ids:
             return {"marked_count": 0}
-
-        # # Find all unread message statuses for this user in accessible threads
-        # unread_statuses = self.env["whatsapp.message.read.status"].search([
-        #     ("is_read", "=", False),
-        #     ("user_id", "=", user.id),
-        #     ("message_id.thread_id.backend_id", "in", backend_ids.ids),
-        # ])
-
-        # # Mark them all as read
-        # unread_statuses.write({"is_read": True})
-
-        # return {"marked_count": len(unread_statuses)}
-
-        query = """
-            UPDATE whatsapp_message_read_status rs
-            SET is_read = TRUE
-            FROM whatsapp_message m
-            JOIN whatsapp_thread t ON m.thread_id = t.id
-            WHERE rs.message_id = m.id
-                AND rs.is_read = FALSE
-                AND rs.user_id = %s
-                AND t.backend_id IN %s
-        """
-        self.env.cr.execute(query, (user.id, tuple(backend_ids.ids)))
-        marked_count = self.env.cr.rowcount
-        self.env["whatsapp.message.read.status"].invalidate_cache(["is_read"])
-
+        threads = self.search([("backend_id", "in", backend_ids.ids)])
+        marked_count = self._get_unread_message_count()
+        self.env["whatsapp.thread.member"].sudo()._mark_seen(threads, self.env.user)
         return {"marked_count": marked_count}
 
     @api.model
@@ -533,7 +569,13 @@ class WhatsAppThread(models.Model):
         }
         if preview_url:
             payload["text"]["preview_url"] = True
-        return self._send_message(payload=payload, message_type="text", body=body)
+        replied_message = self._find_thread_message(reply_to_message_id)
+        return self._send_message(
+            payload=payload,
+            message_type="text",
+            body=body,
+            extra_vals={"replied_message_id": replied_message.id},
+        )
 
     def send_reaction_message(self, emoji, target_message_id):
         self.ensure_one()

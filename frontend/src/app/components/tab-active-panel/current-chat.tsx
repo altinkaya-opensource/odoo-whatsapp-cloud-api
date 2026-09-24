@@ -3,28 +3,33 @@ import {
   FormEvent,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
 import { Message } from "@/app/context/chats-provider";
 import { useCurrentChat } from "@/app/hooks/use-current-chat";
-import Reaction from "../message/reaction";
 import ContactHeader from "./contact-header";
-import ChatMessage from "./chat-message";
+import MessageRow from "./message-row";
 import AttachmentPicker from "../message/attachment-picker";
 import TemplatePicker from "../message/template-picker";
 import DragDropZone from "../message/drag-drop-zone";
 import SuggestionChips from "../message/suggestion-chips";
 import { useTranslations } from "@/app/context/translation-provider";
-import { useContacts } from "@/app/hooks/use-contacts";
-import { useAuth } from "@/app/hooks/use-auth";
+import { useAppConfig } from "@/app/hooks/use-app-config";
+import { userErrorMessage } from "@/app/lib/api-client";
+import { readAiStream } from "@/app/lib/ai/read-stream";
 import {
   ChatCircleDotsIcon,
   XCircleIcon,
   Sparkle,
   TranslateIcon,
 } from "@phosphor-icons/react";
+
+// Placeholder bubbles while a chat that is not cached yet loads
+const LOADING_BUBBLE_WIDTHS = ["55%", "40%", "65%", "35%"];
+const SERVICE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export default function CurrentChat() {
   const {
@@ -43,7 +48,8 @@ export default function CurrentChat() {
     loadPreviousMessages,
     targetMessageId,
     phoneNumber,
-    backendId,
+    partnerName,
+    threadName,
   } = useCurrentChat();
   const [messageText, setMessageText] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
@@ -59,12 +65,15 @@ export default function CurrentChat() {
   const [translations, setTranslations] = useState<
     Map<string, { original: string; translated: string }>
   >(new Map());
+  const translationsRef = useRef(translations);
+  useEffect(() => {
+    translationsRef.current = translations;
+  }, [translations]);
   const [translatingMessageId, setTranslatingMessageId] = useState<
     string | null
   >(null);
   const { t, locale } = useTranslations();
-  const { contacts } = useContacts();
-  const { sessionId } = useAuth();
+  const { suggestionsEnabled } = useAppConfig();
 
   useEffect(() => {
     // Abort any ongoing suggestion requests when switching threads
@@ -82,57 +91,52 @@ export default function CurrentChat() {
     setTranslatingMessageId(null);
   }, [chatId]);
 
-  // Check if the 24-hour customer service window has expired
+  // WhatsApp's customer-service window: 24 hours after the customer's last
+  // message. It can close while the chat is open, so check every minute.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
   const isServiceWindowExpired = useMemo(() => {
-    if (isLoading || messages.length === 0) return false;
-    const lastIncoming = [...messages].reverse().find((m) => !m.isSentFromUser);
-    if (!lastIncoming) return false;
-    const twentyFourHours = 24 * 60 * 60 * 1000;
-    return Date.now() - lastIncoming.timestamp > twentyFourHours;
-  }, [messages, isLoading]);
+    if (isLoading) return false;
+    const lastIncoming = messages.findLast((m) => !m.isSentFromUser);
+    return lastIncoming
+      ? now - lastIncoming.timestamp > SERVICE_WINDOW_MS
+      : false;
+  }, [messages, isLoading, now]);
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const isLoadingPaginationRef = useRef(false);
-  const lastScrollHeightRef = useRef(0);
-  const hasScrolledRef = useRef(false);
 
-  // Auto-scroll to bottom on initial load and new messages
-  useEffect(() => {
+  // The list is a column-reverse scroller: scrollTop 0 is the bottom and the
+  // browser keeps it there while messages, images or the composer change
+  // size. A newly opened chat starts at the bottom, before it is painted.
+  useLayoutEffect(() => {
     const container = scrollContainerRef.current;
-    if (container && !isLoadingPaginationRef.current && !targetMessageId) {
-      container.scrollTop = container.scrollHeight;
-      hasScrolledRef.current = true;
+    if (container && !targetMessageId) {
+      container.scrollTop = 0;
     }
-  }, [messages.length, isLoading, targetMessageId]);
+  }, [chatId, targetMessageId]);
 
-  // Handle scroll event for pagination
+  // Load older messages near the top (scrollTop is negative going up)
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container) return;
 
     let isThrottled = false;
-
     const handleScroll = () => {
-      if (isThrottled || !hasScrolledRef.current) return;
-
-      const scrollTop = container.scrollTop;
-      const scrollThreshold = 100; // Trigger when within 100px of top
-
+      if (isThrottled) return;
+      const distanceFromTop =
+        container.scrollHeight - container.clientHeight + container.scrollTop;
       if (
-        scrollTop <= scrollThreshold &&
+        distanceFromTop <= 100 &&
         hasMoreMessages &&
         !isPaginationLoading &&
         !isLoading
       ) {
         isThrottled = true;
-
-        // Save current scroll height before loading
-        lastScrollHeightRef.current = container.scrollHeight;
-        isLoadingPaginationRef.current = true;
-
         loadPreviousMessages().finally(() => {
-          // Reset throttle after a short delay
           setTimeout(() => {
             isThrottled = false;
           }, 500);
@@ -156,7 +160,6 @@ export default function CurrentChat() {
 
     requestAnimationFrame(() => {
       el.scrollIntoView({ block: "center", behavior: "instant" });
-      hasScrolledRef.current = true;
 
       // Flash highlight
       el.style.transition = "background-color 0.5s ease-in-out";
@@ -172,21 +175,6 @@ export default function CurrentChat() {
       }, 1500);
     });
   }, [targetMessageId, isLoading, messages.length]);
-
-  // Preserve scroll position after pagination loads
-  useEffect(() => {
-    if (!isPaginationLoading && isLoadingPaginationRef.current) {
-      const container = scrollContainerRef.current;
-      if (container && lastScrollHeightRef.current > 0) {
-        const newScrollHeight = container.scrollHeight;
-        const scrollDiff = newScrollHeight - lastScrollHeightRef.current;
-        container.scrollTop = scrollDiff;
-
-        isLoadingPaginationRef.current = false;
-        lastScrollHeightRef.current = 0;
-      }
-    }
-  }, [isPaginationLoading, messages.length]);
 
   // Auto-resize textarea based on content
   const adjustTextareaHeight = () => {
@@ -210,7 +198,10 @@ export default function CurrentChat() {
     }
 
     try {
-      await sendMessage(trimmed);
+      const sending = sendMessage(trimmed);
+      // Show the message being sent even if the user had scrolled up
+      scrollContainerRef.current?.scrollTo({ top: 0 });
+      await sending;
       setMessageText("");
       setSendError(null);
       // Refocus the textarea after sending
@@ -218,8 +209,7 @@ export default function CurrentChat() {
         textareaRef.current?.focus();
       }, 0);
     } catch (error) {
-      const err = error as Error;
-      setSendError(err.message || t("chatInput.sendError"));
+      setSendError(userErrorMessage(error, t("chatInput.sendError")));
     }
   };
 
@@ -228,8 +218,7 @@ export default function CurrentChat() {
     try {
       await sendAttachment(file, caption);
     } catch (error) {
-      const err = error as Error;
-      setSendError(err.message || t("chatInput.attachmentError"));
+      setSendError(userErrorMessage(error, t("chatInput.attachmentError")));
     }
   };
 
@@ -254,68 +243,17 @@ export default function CurrentChat() {
     try {
       const response = await fetch("/api/ai/improve-text", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-session-id": sessionId ?? "",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: messages.slice(-10), // Last 10 messages
+          threadId: Number(chatId),
           currentText: messageText.trim(),
         }),
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to improve text");
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error("Response body is not readable");
-      }
-
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let accumulatedText = "";
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          // Append new chunk to buffer
-          buffer += decoder.decode(value, { stream: true });
-
-          // Process complete lines from buffer
-          while (true) {
-            const lineEnd = buffer.indexOf("\n");
-            if (lineEnd === -1) break;
-
-            const line = buffer.slice(0, lineEnd).trim();
-            buffer = buffer.slice(lineEnd + 1);
-
-            if (line.startsWith("data: ")) {
-              const data = line.slice(6);
-              if (data === "[DONE]") break;
-
-              try {
-                const parsed = JSON.parse(data);
-                const content = parsed.content;
-                if (content) {
-                  accumulatedText += content;
-                  setMessageText(accumulatedText);
-                }
-              } catch {
-                // Ignore invalid JSON
-              }
-            }
-          }
-        }
-      } finally {
-        reader.cancel();
-      }
+      await readAiStream(response, setMessageText);
     } catch (error) {
-      const err = error as Error;
-      setSendError(err.message || t("chatInput.aiImproveError"));
+      console.error("[AI] Improve failed:", error);
+      setSendError(t("chatInput.aiImproveError"));
     } finally {
       setIsAiImproving(false);
       setIsTypingAnimation(false);
@@ -336,68 +274,17 @@ export default function CurrentChat() {
     try {
       const response = await fetch("/api/ai/translate", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-session-id": sessionId ?? "",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: messages.slice(-10), // Last 10 messages
+          threadId: Number(chatId),
           currentText: originalText,
         }),
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to translate text");
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error("Response body is not readable");
-      }
-
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let accumulatedText = "";
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          // Append new chunk to buffer
-          buffer += decoder.decode(value, { stream: true });
-
-          // Process complete lines from buffer
-          while (true) {
-            const lineEnd = buffer.indexOf("\n");
-            if (lineEnd === -1) break;
-
-            const line = buffer.slice(0, lineEnd).trim();
-            buffer = buffer.slice(lineEnd + 1);
-
-            if (line.startsWith("data: ")) {
-              const data = line.slice(6);
-              if (data === "[DONE]") break;
-
-              try {
-                const parsed = JSON.parse(data);
-                const content = parsed.content;
-                if (content) {
-                  accumulatedText += content;
-                  setMessageText(accumulatedText);
-                }
-              } catch {
-                // Ignore invalid JSON
-              }
-            }
-          }
-        }
-      } finally {
-        reader.cancel();
-      }
+      await readAiStream(response, setMessageText);
     } catch (error) {
-      const err = error as Error;
-      setSendError(err.message || t("chatInput.translateError"));
+      console.error("[AI] Translate failed:", error);
+      setSendError(t("chatInput.translateError"));
       setMessageText(originalText); // Restore original text on error
     } finally {
       setIsTranslating(false);
@@ -411,7 +298,7 @@ export default function CurrentChat() {
       if (!message.id || !message.message) return;
 
       // If already translated, toggle back to original (revert)
-      if (translations.has(message.id)) {
+      if (translationsRef.current.has(message.id)) {
         setTranslations((prev) => {
           const newMap = new Map(prev);
           newMap.delete(message.id!);
@@ -425,10 +312,7 @@ export default function CurrentChat() {
       try {
         const response = await fetch("/api/ai/translate-message", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-session-id": sessionId ?? "",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             text: message.message,
             targetLanguage: locale,
@@ -454,86 +338,35 @@ export default function CurrentChat() {
         setTranslatingMessageId(null);
       }
     },
-    [locale, translations, sessionId]
+    [locale]
   );
 
-  // Generate suggestions with server-side caching
+  // Suggestions for the customer's latest message, cached on the server
   const generateSuggestions = useCallback(
     async (forceRefresh = false) => {
-      if (messages.length === 0 || !chatId) {
-        return;
-      }
-
-      // Find the latest incoming message ID for cache key
-      const latestIncoming = [...messages]
-        .reverse()
-        .find((m) => !m.isSentFromUser);
-
-      const lastMessageId = latestIncoming?.id;
-      if (!lastMessageId) {
+      if (
+        !suggestionsEnabled ||
+        !chatId ||
+        !messages.some((m) => !m.isSentFromUser)
+      ) {
         return;
       }
 
       // Abort any previous ongoing request
-      if (suggestionsAbortControllerRef.current) {
-        suggestionsAbortControllerRef.current.abort();
-      }
-
-      // Create new AbortController for this request
+      suggestionsAbortControllerRef.current?.abort();
       const abortController = new AbortController();
       suggestionsAbortControllerRef.current = abortController;
 
       setIsSuggestionsLoading(true);
-
-      // If not forcing refresh, try to get from cache first
-      if (!forceRefresh) {
-        try {
-          const cacheResponse = await fetch(
-            `/api/ai/rag-suggestions?threadId=${chatId}&lastMessageId=${lastMessageId}`,
-            {
-              signal: abortController.signal,
-              headers: { "x-session-id": sessionId ?? "" },
-            }
-          );
-
-          if (cacheResponse.ok) {
-            const cacheData = await cacheResponse.json();
-            if (cacheData.cached && cacheData.suggestions?.length > 0) {
-              setSuggestions(cacheData.suggestions);
-              setIsSuggestionsLoading(false);
-              return; // Cache hit, done!
-            }
-          }
-        } catch (error) {
-          // If aborted, stop processing
-          if (error instanceof Error && error.name === "AbortError") {
-            return;
-          }
-          // Cache check failed, proceed with generation
-        }
+      if (forceRefresh) {
+        setSuggestions([]);
       }
-
-      // Cache miss or force refresh - generate new suggestions
-      setSuggestions([]);
-
-      const currentContact = contacts.find((c) => c.id === chatId);
-      const contactName = currentContact?.displayName || "Customer";
 
       try {
         const response = await fetch("/api/ai/rag-suggestions", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-session-id": sessionId ?? "",
-          },
-          body: JSON.stringify({
-            threadId: chatId,
-            lastMessageId,
-            messages: messages.slice(-10),
-            contactName,
-            userName: "Support Agent",
-            forceRefresh,
-          }),
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ threadId: Number(chatId), forceRefresh }),
           signal: abortController.signal,
         });
 
@@ -554,7 +387,7 @@ export default function CurrentChat() {
         }
       }
     },
-    [messages, contacts, chatId, sessionId]
+    [messages, chatId, suggestionsEnabled]
   );
 
   // Handle suggestion selection - populate textarea
@@ -599,6 +432,9 @@ export default function CurrentChat() {
       generateSuggestions(false); // Use cache if available
     }
   }, [messages, generateSuggestions]);
+
+  const customerName =
+    partnerName ?? threadName ?? phoneNumber ?? t("context.unknownContact");
 
   const annotatedMessages = useMemo(() => {
     const items: Array<
@@ -645,13 +481,11 @@ export default function CurrentChat() {
     );
   }
 
-  const getMessageSpacing = (
-    index: number,
-    reactionsCount?: number
-  ): string => {
+  const getMessageSpacing = (index: number): string => {
     if (index === messages.length - 1) {
       return "mb-0";
-    } else if (reactionsCount && reactionsCount > 0) {
+    } else if (messages[index].reactionEmoji) {
+      // Room for the reaction badge under the bubble
       return "mb-4";
     } else if (
       messages[index].isSentFromUser === messages[index + 1]?.isSentFromUser &&
@@ -672,134 +506,68 @@ export default function CurrentChat() {
         <div className="conversation-canvas relative flex min-h-0 w-full flex-1 flex-col">
           <div
             ref={scrollContainerRef}
-            className="custom-scrollbar relative w-full min-h-0 flex-1 overflow-y-auto"
+            className="custom-scrollbar relative flex w-full min-h-0 flex-1 flex-col-reverse overflow-y-auto"
           >
-            <div className="min-h-full flex flex-col justify-end">
-              <div className="flex flex-col gap-2 px-3 py-4 md:px-5">
-                {isPaginationLoading && (
-                  <div className="w-full flex justify-center items-center py-3">
-                    <div className="flex items-center gap-2 text-[rgb(var(--text-secondary)/var(--text-secondary-opacity))]">
-                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-[rgb(var(--accent-primary))] border-t-transparent"></div>
-                      <span className="text-xs">
-                        {t("chat.loadingOlderMessages")}
-                      </span>
-                    </div>
+            <div className="flex flex-col gap-2 px-3 py-4 md:px-5">
+              {isPaginationLoading && (
+                <div className="w-full flex justify-center items-center py-3">
+                  <div className="flex items-center gap-2 text-[rgb(var(--text-secondary)/var(--text-secondary-opacity))]">
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-[rgb(var(--accent-primary))] border-t-transparent"></div>
+                    <span className="text-xs">
+                      {t("chat.loadingOlderMessages")}
+                    </span>
                   </div>
-                )}
-                {isLoading && (
-                  <div className="text-[rgb(var(--text-primary))]">
-                    {t("chat.loading")}
-                  </div>
-                )}
-                {annotatedMessages.map((item) => {
-                  if (item.type === "label") {
-                    return (
-                      <div
-                        key={`label-${item.key}`}
-                        className="w-full flex justify-center items-center"
-                      >
-                        <div className="z-20 w-fit rounded-lg border border-[rgb(var(--border-primary)/var(--border-primary-opacity))] bg-[rgb(var(--bg-card))] px-2.5 py-1 shadow-sm">
-                          <p className="text-xs font-medium text-[rgb(var(--text-secondary))]">
-                            {formatDayLabel(item.day)}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  const { message, index } = item;
-
+                </div>
+              )}
+              {isLoading && (
+                <div className="flex flex-col gap-3" aria-busy="true">
+                  <span className="sr-only">{t("chat.loading")}</span>
+                  {LOADING_BUBBLE_WIDTHS.map((width, index) => (
+                    <div
+                      key={index}
+                      className={`h-10 animate-pulse rounded-2xl bg-[rgb(var(--bg-secondary))] ${
+                        index % 2 ? "self-end" : "self-start"
+                      }`}
+                      style={{ width }}
+                    />
+                  ))}
+                </div>
+              )}
+              {annotatedMessages.map((item) => {
+                if (item.type === "label") {
                   return (
                     <div
-                      id={message.id ? `msg-${message.id}` : undefined}
-                      className={`w-full flex items-center ${
-                        message.isSentFromUser ? "justify-end" : "justify-start"
-                      }`}
-                      key={message.id ?? `message-${index}`}
+                      key={`label-${item.key}`}
+                      className="w-full flex justify-center items-center"
                     >
-                      <div
-                        className={`group relative flex items-center justify-between gap-2 ${getMessageSpacing(
-                          index,
-                          message.reactions?.length
-                        )}`}
-                      >
-                        {message.isSentFromUser && (
-                          <Reaction
-                            isSentFromUser={true}
-                            onReply={
-                              message.whatsappId
-                                ? () => startReply(message)
-                                : undefined
-                            }
-                            onReaction={
-                              message.whatsappId
-                                ? (emoji) => sendReaction(message, emoji)
-                                : undefined
-                            }
-                            onTranslate={
-                              message.message
-                                ? () => handleTranslateMessage(message)
-                                : undefined
-                            }
-                            isTranslating={translatingMessageId === message.id}
-                            isTranslated={
-                              message.id ? translations.has(message.id) : false
-                            }
-                          />
-                        )}
-                        <ChatMessage
-                          message={message}
-                          translatedText={
-                            message.id
-                              ? translations.get(message.id)?.translated
-                              : undefined
-                          }
-                          isTranslated={
-                            message.id ? translations.has(message.id) : false
-                          }
-                        />
-                        {!message.isSentFromUser && (
-                          <Reaction
-                            isSentFromUser={false}
-                            onReply={
-                              message.whatsappId
-                                ? () => startReply(message)
-                                : undefined
-                            }
-                            onReaction={
-                              message.whatsappId
-                                ? (emoji) => sendReaction(message, emoji)
-                                : undefined
-                            }
-                            onTranslate={
-                              message.message
-                                ? () => handleTranslateMessage(message)
-                                : undefined
-                            }
-                            isTranslating={translatingMessageId === message.id}
-                            isTranslated={
-                              message.id ? translations.has(message.id) : false
-                            }
-                          />
-                        )}
-                        {message.reactionEmoji && (
-                          <div
-                            className={`absolute z-20 -bottom-4 ${
-                              message.isSentFromUser ? "right-3" : "left-3"
-                            }`}
-                          >
-                            <div className="flex items-center justify-center overflow-hidden rounded-xl border border-[rgb(var(--border-primary)/var(--border-primary-opacity))] bg-[rgb(var(--bg-card))] shadow-sm">
-                              <p className="px-1.5 py-0.5 text-xs">
-                                {message.reactionEmoji}
-                              </p>
-                            </div>
-                          </div>
-                        )}
+                      <div className="z-20 w-fit rounded-lg border border-[rgb(var(--border-primary)/var(--border-primary-opacity))] bg-[rgb(var(--bg-card))] px-2.5 py-1 shadow-sm">
+                        <p className="text-xs font-medium text-[rgb(var(--text-secondary))]">
+                          {formatDayLabel(item.day)}
+                        </p>
                       </div>
                     </div>
                   );
-                })}
-              </div>
+                }
+
+                const { message, index } = item;
+                const translation = message.id
+                  ? translations.get(message.id)
+                  : undefined;
+                return (
+                  <MessageRow
+                    key={message.id ?? `message-${index}`}
+                    message={message}
+                    spacingClass={getMessageSpacing(index)}
+                    customerName={customerName}
+                    translatedText={translation?.translated}
+                    isTranslated={!!translation}
+                    isTranslating={translatingMessageId === message.id}
+                    onReply={startReply}
+                    onReaction={sendReaction}
+                    onTranslate={handleTranslateMessage}
+                  />
+                );
+              })}
             </div>
           </div>
 
@@ -812,11 +580,9 @@ export default function CurrentChat() {
                 <p className="max-w-xl text-xs leading-5 text-[rgb(var(--text-primary))]">
                   {t("chatInput.serviceWindowExpired")}
                 </p>
-                {chatId && phoneNumber && (
+                {chatId && (
                   <TemplatePicker
                     threadId={Number(chatId)}
-                    phoneNumber={phoneNumber}
-                    backendId={backendId}
                     disabled={isSending}
                     triggerVariant="cta"
                   />
@@ -839,8 +605,10 @@ export default function CurrentChat() {
                     {t("chatInput.replyingTo", {
                       name: replyTo.isSentFromUser
                         ? t("common.you")
-                        : (contacts.find((c) => c.id === replyTo.contactId)
-                            ?.displayName ?? ""),
+                        : (partnerName ??
+                          threadName ??
+                          phoneNumber ??
+                          t("context.unknownContact")),
                     })}
                   </p>
                   <p className="max-w-xs truncate text-xs text-[rgb(var(--text-secondary))]">
