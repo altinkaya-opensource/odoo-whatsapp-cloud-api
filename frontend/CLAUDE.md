@@ -231,6 +231,10 @@ directly.
 - Odoo's "Open WhatsApp" links carry a one-time code, valid for a minute.
   `/api/auth/sso-login` trades it server to server for a new Odoo session.
 - Signing out destroys the Odoo session, not only the cookie.
+- `src/proxy.ts` sets a nonce-based Content-Security-Policy on every page and
+  refuses a state-changing `/api` request whose `Origin` is another site.
+  Only scripts carrying the nonce run, so an inline script or a script from
+  another origin needs a change there. The page renders per request for it.
 - Uploads and downloads proxy through Odoo, which checks that the attachment
   belongs to a WhatsApp message the user may read. Proxied files carry
   `default-src 'none'` and `nosniff`.

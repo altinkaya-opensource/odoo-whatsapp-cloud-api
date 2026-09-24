@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -17,11 +18,15 @@ export const metadata: Metadata = {
   description: "WhatsApp Cloud API Web Interface",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Render per request: the CSP nonce Next puts on its scripts is new on
+  // every page view, which a page built ahead of time cannot have
+  await connection();
+
   return (
     <html lang="en" data-theme="dark">
       <body
