@@ -15,6 +15,9 @@ class TestWhatsAppChatbotGreeting(TransactionCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
+        # Error texts are asserted in English; a database in another language
+        # translates them
+        cls.env = cls.env(context=dict(cls.env.context, lang="en_US"))
         cls.chatbot = cls.env["whatsapp.chatbot"].create(
             {
                 "title": "Turkish Greeting",
