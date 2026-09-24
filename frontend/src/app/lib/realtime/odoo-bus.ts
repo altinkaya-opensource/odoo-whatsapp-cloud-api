@@ -7,6 +7,7 @@
  * tab that reconnects gets what it missed.
  */
 import { getOdooBaseUrl } from "../odoo/server";
+import { sessionCache } from "../session-cache";
 
 export type BusEvent = { id: number; type: string; payload: unknown };
 export type BusSignal = BusEvent | { type: "session-expired" };
@@ -124,6 +125,7 @@ class OdooBusConnection {
       }
       if (event.code === SESSION_EXPIRED_CODE) {
         console.warn("[OdooBus] Session expired, closing the bus connection");
+        sessionCache.delete(this.sessionId);
         this.emit({ type: "session-expired" });
         this.dispose();
         return;

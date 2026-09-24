@@ -1,98 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
+import { odooErrorResponse, requireSession } from "@/app/lib/odoo/server";
 
-const REQUIRED_ENV_VARS = [
-  "ODOO_JSONRPC_HOST",
-  "ODOO_JSONRPC_DATABASE",
-] as const;
+const DEFAULT_LIMIT = 20;
+const MAX_LIMIT = 50;
+// Odoo walks the matches from the newest to reach the offset
+const MAX_OFFSET = 1000;
 
-const ensureEnv = () => {
-  const missing = REQUIRED_ENV_VARS.filter((name) => !process.env[name]);
-  if (missing.length > 0) {
-    throw new Error(
-      `Missing required environment variables: ${missing.join(", ")}`
-    );
-  }
-};
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(Math.max(value, min), max);
 
 export async function GET(request: NextRequest) {
-  try {
-    ensureEnv();
-  } catch (error) {
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Server configuration error",
-      },
-      { status: 500 }
-    );
+  const auth = await requireSession(request);
+  if ("response" in auth) {
+    return auth.response;
   }
 
-  const sessionId = request.headers.get("x-session-id");
-
-  if (!sessionId) {
-    return NextResponse.json(
-      { error: "Missing Odoo session id" },
-      { status: 401 }
-    );
-  }
-
-  const searchQuery = request.nextUrl.searchParams.get("search");
-  const limitParam = request.nextUrl.searchParams.get("limit");
-  const offsetParam = request.nextUrl.searchParams.get("offset");
-  const limit = limitParam ? Number(limitParam) : 20;
-  const offset = offsetParam ? Number(offsetParam) : 0;
-
-  if (!searchQuery || searchQuery.trim().length === 0) {
+  const searchQuery = request.nextUrl.searchParams.get("search")?.trim();
+  if (!searchQuery) {
     return NextResponse.json({ messages: [] });
   }
-
-  const protocolEnv: "http" | "https" =
-    process.env.ODOO_JSONRPC_PROTOCOL === "https" ? "https" : "http";
-  const portEnv = process.env.ODOO_JSONRPC_PORT;
-  const port = portEnv ? Number(portEnv) : undefined;
-
-  if (typeof port !== "undefined" && Number.isNaN(port)) {
-    return NextResponse.json(
-      { error: "ODOO_JSONRPC_PORT must be a valid number" },
-      { status: 500 }
-    );
-  }
+  const limit = Number(request.nextUrl.searchParams.get("limit")) || 0;
+  const offset = Number(request.nextUrl.searchParams.get("offset")) || 0;
 
   try {
-    const odooBaseUrl = `${protocolEnv}://${process.env.ODOO_JSONRPC_HOST}${port ? `:${port}` : ""}`;
-    const response = await fetch(`${odooBaseUrl}/whatsapp/message/search`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        Cookie: `session_id=${sessionId};`,
-      },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        method: "call",
-        params: {
-          query: searchQuery.trim(),
-          limit,
-          offset,
-        },
-      }),
-    });
-
-    const data = await response.json();
-
-    if (data.error) {
-      return NextResponse.json(
-        { error: data.error.message || "Failed to search messages" },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ messages: data.result });
-  } catch (error) {
-    const err = error as Error;
-    return NextResponse.json(
-      { error: err.message || "Failed to search messages" },
-      { status: 500 }
+    const messages = await auth.session.callController(
+      "/whatsapp/message/search",
+      {
+        query: searchQuery,
+        limit: clamp(Math.trunc(limit) || DEFAULT_LIMIT, 1, MAX_LIMIT),
+        offset: clamp(Math.trunc(offset), 0, MAX_OFFSET),
+      }
     );
+    return NextResponse.json({ messages });
+  } catch (error) {
+    return odooErrorResponse(error, "Failed to search messages");
   }
 }

@@ -47,7 +47,6 @@ export default function CurrentChat() {
     loadPreviousMessages,
     targetMessageId,
     phoneNumber,
-    backendId,
     partnerName,
     threadName,
     group,
@@ -741,11 +740,9 @@ export default function CurrentChat() {
                 <p className="max-w-xl text-xs leading-5 text-[rgb(var(--text-primary))]">
                   {t("chatInput.serviceWindowExpired")}
                 </p>
-                {chatId && phoneNumber && (
+                {chatId && (
                   <TemplatePicker
                     threadId={Number(chatId)}
-                    phoneNumber={phoneNumber}
-                    backendId={backendId}
                     disabled={isSending}
                     triggerVariant="cta"
                   />

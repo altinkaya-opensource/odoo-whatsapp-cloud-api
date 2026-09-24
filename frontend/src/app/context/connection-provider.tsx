@@ -54,8 +54,8 @@ export default function ConnectionProvider({ children }: PropsWithChildren) {
       return;
     }
 
-    // Check if it's a 401/403 error (session expired)
-    if (err?.status === 401 || err?.status === 403) {
+    // Only 401 means the session is gone; 403 is a refusal of one request
+    if (err?.status === 401) {
       setConnectionStatus("session-expired");
       return;
     }

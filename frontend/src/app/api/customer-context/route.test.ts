@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { customerContextCache } from "@/app/lib/customer-context-cache";
+import { sessionCache } from "@/app/lib/session-cache";
 
 const mocks = vi.hoisted(() => {
   const sessionClient = {
@@ -25,11 +26,13 @@ vi.mock("@/app/lib/odoo/jsonrpc", () => ({
 
 import { GET } from "./route";
 
+const SESSION_ID = "a".repeat(40);
+
 const requestFor = (threadId: string, withSession = true) =>
   new NextRequest(
     `http://localhost/api/customer-context?threadId=${threadId}`,
     {
-      headers: withSession ? { "x-session-id": "s".repeat(40) } : {},
+      headers: withSession ? { "x-session-id": SESSION_ID } : {},
     }
   );
 
@@ -50,6 +53,8 @@ const originalEnv = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // A signed-in agent: requireSession finds the session without calling Odoo
+  sessionCache.set(SESSION_ID, [1]);
   customerContextCache.clear();
   customerContextCache.stopCleanup();
   process.env.ODOO_JSONRPC_HOST = "odoo.test";
@@ -59,6 +64,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  sessionCache.clear();
   customerContextCache.clear();
   customerContextCache.stopCleanup();
   for (const [key, value] of Object.entries(originalEnv)) {

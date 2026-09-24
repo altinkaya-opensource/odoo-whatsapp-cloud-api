@@ -131,7 +131,7 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
     markChatAsRead,
   } = useChats();
   const { contacts } = useContacts();
-  const { sessionId, backendId: authBackendId, backendUserId } = useAuth();
+  const { sessionId, backendUserId } = useAuth();
   const { reportApiError, reportConnectionRestored } = useConnection();
   const queryClient = useQueryClient();
   const { chatId, targetMessageId } = currentChat;
@@ -274,7 +274,10 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
     }
   }, [hasNextPage, isFetchingNextPage, fetchOlderMessages]);
 
-  /** Where a message of the open chat goes, or an error to show. */
+  /**
+   * The open chat's thread, or an error to show. The server reads the phone
+   * number and backend from the thread itself.
+   */
   const getRecipient = useCallback(() => {
     if (!sessionId) {
       throw new Error("You are not authenticated");
@@ -287,16 +290,8 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
     if (Number.isNaN(numericThreadId)) {
       throw new Error("Invalid conversation identifier");
     }
-    const phoneNumber =
-      header.phoneNumber ??
-      extractDigits(header.threadName) ??
-      extractDigits(header.contact?.displayName);
-    if (!phoneNumber) {
-      throw new Error("Unable to determine the recipient phone number");
-    }
-    const backendId = header.backendId ?? authBackendId ?? undefined;
-    return { threadId, numericThreadId, phoneNumber, backendId };
-  }, [sessionId, header, authBackendId]);
+    return { threadId, numericThreadId };
+  }, [sessionId, header.chatId]);
 
   const setSending = useCallback((threadId: string, isSending: boolean) => {
     setCurrentChat((prev) =>
@@ -330,8 +325,7 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
       if (trimmed.length === 0) {
         return;
       }
-      const { threadId, numericThreadId, phoneNumber, backendId } =
-        getRecipient();
+      const { threadId, numericThreadId } = getRecipient();
       const replyTarget = currentChat.replyTo;
       const replyTo =
         replyTarget && replyTarget.contactId === threadId
@@ -365,9 +359,7 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
             method: "POST",
             body: {
               threadId: numericThreadId,
-              phoneNumber,
               message: trimmed,
-              backendId,
               replyToMessageId: replyTo?.messageId,
             },
           }
@@ -411,11 +403,7 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
 
   const sendAttachment = useCallback(
     async (file: File, caption?: string) => {
-      const { threadId, numericThreadId, phoneNumber, backendId } =
-        getRecipient();
-      if (!backendId) {
-        throw new Error("Unable to determine backend ID");
-      }
+      const { threadId, numericThreadId } = getRecipient();
       const previewUrl = URL.createObjectURL(file);
       const pending: Message = {
         id: `local-${Date.now()}`,
@@ -450,17 +438,11 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
           throw new Error("No attachment ID returned from upload");
         }
 
-        const isImage = file.type.startsWith("image/");
-        const isVideo = file.type.startsWith("video/");
-        const isAudio = file.type.startsWith("audio/");
-        const isDocument = !isImage && !isVideo && !isAudio;
-        const method = isImage
-          ? "send_image_message"
-          : isVideo
-            ? "send_video_message"
-            : isAudio
-              ? "send_audio_message"
-              : "send_document_message";
+        const kind = file.type.startsWith("image/")
+          ? "image"
+          : file.type.startsWith("video/")
+            ? "video"
+            : "document";
 
         await apiFetch<{ result?: SendResult }>(
           "/api/messages/send-attachment",
@@ -469,12 +451,10 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
             method: "POST",
             body: {
               threadId: numericThreadId,
-              phoneNumber,
-              backendId,
               attachmentId,
               caption: caption || undefined,
-              method,
-              filename: isDocument ? file.name : undefined,
+              kind,
+              filename: file.name,
             },
           }
         );
@@ -522,16 +502,15 @@ export default function CurrentChatProvider({ children }: PropsWithChildren) {
       if (!message.whatsappId) {
         throw new Error("Cannot react to this message (missing WhatsApp ID)");
       }
-      const { threadId, phoneNumber, backendId } = getRecipient();
+      const { threadId, numericThreadId } = getRecipient();
       try {
         await apiFetch("/api/messages/send-reaction", {
           sessionId,
           method: "POST",
           body: {
-            phoneNumber,
+            threadId: numericThreadId,
             emoji,
             whatsappMessageId: message.whatsappId,
-            backendId,
           },
         });
         reportConnectionRestored();

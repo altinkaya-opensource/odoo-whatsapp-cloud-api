@@ -168,6 +168,7 @@ docker compose up -d
 | `ODOO_JSONRPC_PORT`      | Odoo server port                                      | `443`, `8069`                      |
 | `ODOO_JSONRPC_DATABASE`  | Odoo database name                                    | `production_db`                    |
 | `ODOO_WEBSOCKET_URL`     | Odoo's bus websocket, if not `/websocket` on JSON-RPC | `wss://odoo.example.com/websocket` |
+| `ODOO_PUBLIC_URL`        | Odoo address for links, if JSON-RPC is internal       | `https://odoo.example.com`         |
 | `AI_CHAT_ENABLED`        | Turns the AI reply helpers on                         | `false`                            |
 | `OPENAI_BASE_URL`        | OpenAI-compatible endpoint, when AI is on             | `https://api.openai.com/v1`        |
 | `OPENAI_API_KEY`         | Key for that endpoint                                 |                                    |

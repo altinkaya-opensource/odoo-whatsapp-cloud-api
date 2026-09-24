@@ -1,19 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
-import { OdooClient } from "@/app/lib/odoo/jsonrpc";
+import {
+  getThreadRecipient,
+  invalidBody,
+  odooErrorResponse,
+  parseId,
+  readJsonBody,
+  requireSession,
+  threadNotFound,
+} from "@/app/lib/odoo/server";
 
-const REQUIRED_ENV_VARS = [
-  "ODOO_JSONRPC_HOST",
-  "ODOO_JSONRPC_DATABASE",
-] as const;
+const MAX_LIMIT = 200;
 
-const ensureEnv = () => {
-  const missing = REQUIRED_ENV_VARS.filter((name) => !process.env[name]);
-  if (missing.length > 0) {
-    throw new Error(
-      `Missing required environment variables: ${missing.join(", ")}`
-    );
-  }
-};
+const MESSAGE_FIELDS = [
+  "create_date",
+  "body",
+  "status",
+  "direction",
+  "attachment_id",
+  "create_uid",
+  "message_id",
+  "replied_message_id",
+  "write_date",
+  "timestamp",
+  "reaction_emoji",
+];
 
 type OdooMessageRecord = {
   id: number;
@@ -29,17 +39,11 @@ type OdooMessageRecord = {
 };
 
 export async function GET(request: NextRequest) {
-  try {
-    ensureEnv();
-  } catch (error) {
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Server configuration error",
-      },
-      { status: 500 }
-    );
+  const auth = await requireSession(request);
+  if ("response" in auth) {
+    return auth.response;
   }
+  const sessionClient = auth.session;
 
   const threadIdParam = request.nextUrl.searchParams.get("threadId");
   if (!threadIdParam) {
@@ -60,9 +64,9 @@ export async function GET(request: NextRequest) {
   const limitParam = request.nextUrl.searchParams.get("limit");
   // Default to 30 if not specified (but frontend always sends 100)
   const limit = limitParam ? Number(limitParam) : 30;
-  if (Number.isNaN(limit) || limit <= 0) {
+  if (!Number.isSafeInteger(limit) || limit <= 0 || limit > MAX_LIMIT) {
     return NextResponse.json(
-      { error: "limit must be a valid positive number" },
+      { error: `limit must be between 1 and ${MAX_LIMIT}` },
       { status: 400 }
     );
   }
@@ -111,68 +115,27 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const sessionId = request.headers.get("x-session-id");
-  if (!sessionId) {
-    return NextResponse.json(
-      { error: "Missing Odoo session id" },
-      { status: 401 }
-    );
-  }
-
-  const protocolEnv: "http" | "https" =
-    process.env.ODOO_JSONRPC_PROTOCOL === "https" ? "https" : "http";
-  const portEnv = process.env.ODOO_JSONRPC_PORT;
-  const port = portEnv ? Number(portEnv) : undefined;
-
-  if (typeof port !== "undefined" && Number.isNaN(port)) {
-    return NextResponse.json(
-      { error: "ODOO_JSONRPC_PORT must be a valid number" },
-      { status: 500 }
-    );
-  }
-
-  const odooClient = new OdooClient({
-    host: process.env.ODOO_JSONRPC_HOST as string,
-    port,
-    protocol: protocolEnv,
-  });
-
-  const sessionClient = odooClient.createSession(sessionId);
-
   try {
     if (typeof aroundId === "number") {
       const halfLimit = Math.ceil(limit / 2);
-      const selectFields = [
-        "create_date",
-        "body",
-        "status",
-        "direction",
-        "attachment_id",
-        "create_uid",
-        "message_id",
-        "replied_message_id",
-        "write_date",
-        "timestamp",
-        "reaction_emoji",
-      ];
-
-      const olderMessages = await sessionClient.searchRead<OdooMessageRecord[]>(
-        "whatsapp.message",
-        [
-          ["thread_id", "=", threadId],
-          ["id", "<=", aroundId],
-        ],
-        { limit: halfLimit, order: "id DESC", select: selectFields }
-      );
-
-      const newerMessages = await sessionClient.searchRead<OdooMessageRecord[]>(
-        "whatsapp.message",
-        [
-          ["thread_id", "=", threadId],
-          ["id", ">", aroundId],
-        ],
-        { limit: halfLimit, select: selectFields }
-      );
+      const [olderMessages, newerMessages] = await Promise.all([
+        sessionClient.searchRead<OdooMessageRecord[]>(
+          "whatsapp.message",
+          [
+            ["thread_id", "=", threadId],
+            ["id", "<=", aroundId],
+          ],
+          { limit: halfLimit, order: "id DESC", select: MESSAGE_FIELDS }
+        ),
+        sessionClient.searchRead<OdooMessageRecord[]>(
+          "whatsapp.message",
+          [
+            ["thread_id", "=", threadId],
+            ["id", ">", aroundId],
+          ],
+          { limit: halfLimit, select: MESSAGE_FIELDS }
+        ),
+      ]);
 
       const combined = [
         ...(olderMessages ?? []).reverse(),
@@ -203,155 +166,67 @@ export async function GET(request: NextRequest) {
       {
         limit,
         order: direction === "backward" ? "id DESC" : undefined,
-        select: [
-          "create_date",
-          "body",
-          "status",
-          "direction",
-          "attachment_id",
-          "create_uid",
-          "message_id",
-          "replied_message_id",
-          "write_date",
-          "timestamp",
-          "reaction_emoji",
-        ],
+        select: MESSAGE_FIELDS,
       }
     );
 
     return NextResponse.json({ threadId, messages });
   } catch (error) {
-    const err = error as Error;
-    return NextResponse.json(
-      { error: err.message || "Failed to fetch messages from Odoo" },
-      { status: 500 }
-    );
+    return odooErrorResponse(error, "Failed to fetch messages from Odoo");
   }
 }
 
 export async function POST(request: NextRequest) {
-  try {
-    ensureEnv();
-  } catch (error) {
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Server configuration error",
-      },
-      { status: 500 }
-    );
+  const auth = await requireSession(request);
+  if ("response" in auth) {
+    return auth.response;
   }
 
-  const sessionId = request.headers.get("x-session-id");
-  if (!sessionId) {
-    return NextResponse.json(
-      { error: "Missing Odoo session id" },
-      { status: 401 }
-    );
+  const payload = await readJsonBody(request);
+  if (!payload) {
+    return invalidBody();
   }
-
-  const protocolEnv: "http" | "https" =
-    process.env.ODOO_JSONRPC_PROTOCOL === "https" ? "https" : "http";
-  const portEnv = process.env.ODOO_JSONRPC_PORT;
-  const port = portEnv ? Number(portEnv) : undefined;
-
-  if (typeof port !== "undefined" && Number.isNaN(port)) {
-    return NextResponse.json(
-      { error: "ODOO_JSONRPC_PORT must be a valid number" },
-      { status: 500 }
-    );
-  }
-
-  let payload: unknown;
-  try {
-    payload = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-  }
-
-  const { threadId, phoneNumber, message, backendId, replyToMessageId } =
-    payload as {
-      threadId?: number | string;
-      phoneNumber?: string;
-      message?: string;
-      backendId?: number;
-      replyToMessageId?: string;
-    };
-
-  const parsedThreadId =
-    typeof threadId === "string" ? Number(threadId) : threadId;
-  if (typeof parsedThreadId !== "number" || Number.isNaN(parsedThreadId)) {
+  const threadId = parseId(payload.threadId);
+  if (!threadId) {
     return NextResponse.json(
       { error: "threadId must be a valid number" },
       { status: 400 }
     );
   }
-
-  if (!phoneNumber || typeof phoneNumber !== "string") {
-    return NextResponse.json(
-      { error: "phoneNumber is required" },
-      { status: 400 }
-    );
-  }
-
-  if (!message || typeof message !== "string" || message.trim().length === 0) {
+  const message =
+    typeof payload.message === "string" ? payload.message.trim() : "";
+  if (!message) {
     return NextResponse.json({ error: "message is required" }, { status: 400 });
   }
-
-  const trimmedMessage = message.trim();
-
-  const resolvedBackendId =
-    typeof backendId === "number"
-      ? backendId
-      : process.env.ODOO_WHATSAPP_BACKEND_ID
-        ? Number(process.env.ODOO_WHATSAPP_BACKEND_ID)
-        : undefined;
-
-  if (
-    typeof resolvedBackendId !== "number" ||
-    Number.isNaN(resolvedBackendId) ||
-    resolvedBackendId <= 0
-  ) {
-    return NextResponse.json(
-      { error: "A valid backend id is required to send messages" },
-      { status: 500 }
-    );
-  }
-
-  const odooClient = new OdooClient({
-    host: process.env.ODOO_JSONRPC_HOST as string,
-    port,
-    protocol: protocolEnv,
-  });
-
-  const sessionClient = odooClient.createSession(sessionId);
+  const replyToMessageId =
+    typeof payload.replyToMessageId === "string"
+      ? payload.replyToMessageId
+      : null;
 
   try {
+    const recipient = await getThreadRecipient(auth.session, threadId);
+    if (!recipient) {
+      return threadNotFound();
+    }
+    const { backendId, phoneNumber } = recipient;
     const result = await (replyToMessageId
-      ? sessionClient.call(
+      ? auth.session.call(
           "whatsapp.backend",
           "send_reply_message",
-          [resolvedBackendId, phoneNumber, trimmedMessage, replyToMessageId],
+          [backendId, phoneNumber, message, replyToMessageId],
           {},
           false
         )
-      : sessionClient.call(
+      : auth.session.call(
           "whatsapp.backend",
           "send_text_message",
-          [resolvedBackendId, phoneNumber, trimmedMessage],
+          [backendId, phoneNumber, message],
           {},
           false
         ));
 
-    return NextResponse.json({
-      result,
-      threadId: parsedThreadId,
-    });
+    return NextResponse.json({ result, threadId });
   } catch (error) {
-    const err = error as Error;
-    return NextResponse.json(
-      { error: err.message || "Failed to send message via Odoo" },
-      { status: 500 }
-    );
+    return odooErrorResponse(error, "Failed to send message via Odoo");
   }
 }

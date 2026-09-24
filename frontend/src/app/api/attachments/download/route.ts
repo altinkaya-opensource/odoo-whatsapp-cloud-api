@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getOdooBaseUrl, isValidSessionId } from "@/app/lib/odoo/server";
+import {
+  getOdooBaseUrl,
+  resolveSession,
+  UNTRUSTED_FILE_HEADERS,
+} from "@/app/lib/odoo/server";
+import { ODOO_TIMEOUT_MS } from "@/app/lib/odoo/jsonrpc";
 
 // Only this path may be proxied, and only against the configured Odoo host.
 const ATTACHMENT_PATH = /^\/whatsapp\/attachment\/download\/\d+$/;
@@ -7,8 +12,6 @@ const ATTACHMENT_PATH = /^\/whatsapp\/attachment\/download\/\d+$/;
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
   const attachmentUrl = url.searchParams.get("url");
-  const sessionId =
-    request.headers.get("x-session-id") || url.searchParams.get("session_id");
 
   if (!attachmentUrl) {
     return NextResponse.json(
@@ -17,8 +20,13 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  if (!isValidSessionId(sessionId)) {
-    return NextResponse.json({ error: "Missing session ID" }, { status: 401 });
+  // <img> and download links cannot set headers, so the session may come in
+  // the query string
+  const auth = await resolveSession(
+    request.headers.get("x-session-id") || url.searchParams.get("session_id")
+  );
+  if ("response" in auth) {
+    return auth.response;
   }
 
   // Keep only the path of the caller-supplied URL and rebuild it against the
@@ -46,8 +54,9 @@ export async function GET(request: NextRequest) {
     const odooResponse = await fetch(target, {
       method: "GET",
       headers: {
-        Cookie: `session_id=${sessionId}`,
+        Cookie: `session_id=${auth.sessionId}`,
       },
+      signal: AbortSignal.timeout(ODOO_TIMEOUT_MS),
     });
 
     if (!odooResponse.ok) {
@@ -57,16 +66,15 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get the file data
-    const fileBuffer = await odooResponse.arrayBuffer();
     const contentType =
       odooResponse.headers.get("Content-Type") || "application/octet-stream";
     const contentDisposition = odooResponse.headers.get("Content-Disposition");
 
-    // Return the file
-    return new NextResponse(fileBuffer, {
+    // Stream the file instead of holding it in memory
+    return new NextResponse(odooResponse.body, {
       status: 200,
       headers: {
+        ...UNTRUSTED_FILE_HEADERS,
         "Content-Type": contentType,
         "Content-Disposition": contentDisposition || "attachment",
         // Per-user content: never store it in a shared cache.

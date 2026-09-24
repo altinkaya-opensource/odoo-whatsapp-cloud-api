@@ -18,8 +18,6 @@ export type SimpleTemplate = {
 
 type TemplatePickerProps = {
   threadId: number;
-  phoneNumber: string;
-  backendId: number | null;
   disabled?: boolean;
   onSent?: () => void;
   triggerVariant?: "icon" | "cta";
@@ -27,8 +25,6 @@ type TemplatePickerProps = {
 
 export default function TemplatePicker({
   threadId,
-  phoneNumber,
-  backendId,
   disabled,
   onSent,
   triggerVariant = "icon",
@@ -49,9 +45,7 @@ export default function TemplatePicker({
     setIsLoading(true);
     setError(null);
     try {
-      const query =
-        typeof backendId === "number" ? `?backendId=${backendId}` : "";
-      const response = await fetch(`/api/templates${query}`, {
+      const response = await fetch(`/api/templates?threadId=${threadId}`, {
         method: "GET",
         headers: { "x-session-id": sessionId },
       });
@@ -68,7 +62,7 @@ export default function TemplatePicker({
     } finally {
       setIsLoading(false);
     }
-  }, [backendId, sessionId, t]);
+  }, [threadId, sessionId, t]);
 
   useEffect(() => {
     if (isOpen) {
@@ -107,9 +101,7 @@ export default function TemplatePicker({
         },
         body: JSON.stringify({
           threadId,
-          phoneNumber,
           templateId: template.id,
-          backendId: backendId ?? undefined,
         }),
       });
       const data = await response.json().catch(() => ({}));

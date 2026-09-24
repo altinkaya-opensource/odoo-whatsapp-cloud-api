@@ -48,6 +48,8 @@ ODOO_JSONRPC_DATABASE=your_database
 
 # Optional: Odoo's websocket when it is not /websocket next to JSON-RPC
 ODOO_WEBSOCKET_URL=
+# Optional: the Odoo address users open, when JSON-RPC goes to an internal one
+ODOO_PUBLIC_URL=
 
 # Optional, for the AI reply helpers
 AI_CHAT_ENABLED=false

@@ -28,6 +28,9 @@ WP_PROFILE_PICTURE_PATH = "/whatsapp/partner/profile_picture/"
 # request may store.
 WP_MAX_UPLOAD_BYTES = 100 * 1024 * 1024
 
+MESSAGE_SEARCH_MAX_LIMIT = 50
+MESSAGE_SEARCH_MAX_OFFSET = 1000
+
 
 class WhatsAppCloudAPIBackendController(http.Controller):
     def _get_whatsapp_attachment(self, attachment_id):
@@ -196,8 +199,9 @@ class WhatsAppCloudAPIBackendController(http.Controller):
     def search_messages_endpoint(self, **kwargs):
         """Search WhatsApp messages by content."""
         query = kwargs.get("query", "")
-        limit = kwargs.get("limit", 20)
-        offset = kwargs.get("offset", 0)
+        # The search walks every match from the newest up to offset + limit
+        limit = min(max(int(kwargs.get("limit", 20)), 1), MESSAGE_SEARCH_MAX_LIMIT)
+        offset = min(max(int(kwargs.get("offset", 0)), 0), MESSAGE_SEARCH_MAX_OFFSET)
         return request.env["whatsapp.thread"].search_messages_by_content(
             query, limit=limit, offset=offset
         )

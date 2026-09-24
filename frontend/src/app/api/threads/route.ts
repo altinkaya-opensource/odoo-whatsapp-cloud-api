@@ -1,19 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { OdooClient } from "@/app/lib/odoo/jsonrpc";
-
-const REQUIRED_ENV_VARS = [
-  "ODOO_JSONRPC_HOST",
-  "ODOO_JSONRPC_DATABASE",
-] as const;
-
-const ensureEnv = () => {
-  const missing = REQUIRED_ENV_VARS.filter((name) => !process.env[name]);
-  if (missing.length > 0) {
-    throw new Error(
-      `Missing required environment variables: ${missing.join(", ")}`
-    );
-  }
-};
+import {
+  odooErrorResponse,
+  parseId,
+  requireSession,
+} from "@/app/lib/odoo/server";
 
 const THREAD_FIELDS = [
   "name",
@@ -41,33 +31,10 @@ type ThreadRecord = {
 };
 
 export async function GET(request: NextRequest) {
-  try {
-    ensureEnv();
-  } catch (error) {
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Server configuration error",
-      },
-      { status: 500 }
-    );
-  }
-
-  const sessionId = request.headers.get("x-session-id");
-
-  if (!sessionId) {
-    return NextResponse.json(
-      { error: "Missing Odoo session id" },
-      { status: 401 }
-    );
-  }
-
   // Optional: include a specific thread ID (for deep linking from Odoo)
   const includeThreadIdParam =
     request.nextUrl.searchParams.get("includeThreadId");
-  const includeThreadId = includeThreadIdParam
-    ? parseInt(includeThreadIdParam, 10)
-    : null;
+  const includeThreadId = parseId(includeThreadIdParam);
   const limitParam = request.nextUrl.searchParams.get("limit");
   const offsetParam = request.nextUrl.searchParams.get("offset");
   const searchQuery = request.nextUrl.searchParams.get("search");
@@ -98,25 +65,11 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const protocolEnv: "http" | "https" =
-    process.env.ODOO_JSONRPC_PROTOCOL === "https" ? "https" : "http";
-  const portEnv = process.env.ODOO_JSONRPC_PORT;
-  const port = portEnv ? Number(portEnv) : undefined;
-
-  if (typeof port !== "undefined" && Number.isNaN(port)) {
-    return NextResponse.json(
-      { error: "ODOO_JSONRPC_PORT must be a valid number" },
-      { status: 500 }
-    );
+  const auth = await requireSession(request);
+  if ("response" in auth) {
+    return auth.response;
   }
-
-  const odooClient = new OdooClient({
-    host: process.env.ODOO_JSONRPC_HOST as string,
-    port,
-    protocol: protocolEnv,
-  });
-
-  const sessionClient = odooClient.createSession(sessionId);
+  const sessionClient = auth.session;
 
   try {
     // Build search domain
@@ -162,7 +115,6 @@ export async function GET(request: NextRequest) {
     if (
       offset === 0 &&
       includeThreadId &&
-      !isNaN(includeThreadId) &&
       !threads.some((t) => t.id === includeThreadId)
     ) {
       const specificThread = await sessionClient.searchRead<ThreadRecord[]>(
@@ -182,10 +134,6 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ threads });
   } catch (error) {
-    const err = error as Error;
-    return NextResponse.json(
-      { error: err.message || "Failed to fetch threads from Odoo" },
-      { status: 500 }
-    );
+    return odooErrorResponse(error, "Failed to fetch threads from Odoo");
   }
 }

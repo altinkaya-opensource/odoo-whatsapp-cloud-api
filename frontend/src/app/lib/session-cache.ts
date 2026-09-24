@@ -1,9 +1,8 @@
 /**
- * Server-side session cache for storing user backend access
+ * Server-side cache of each session's WhatsApp backends.
  *
- * This cache stores backend_ids per session to prevent:
- * 1. Unnecessary RPC calls on every SSE connection
- * 2. Client-side manipulation of backend access (security)
+ * It saves asking Odoo on every request. Entries live a few minutes, so a
+ * revoked session or a user removed from a backend loses access soon after.
  *
  * For production multi-instance deployments, replace with Redis.
  */
@@ -15,7 +14,7 @@ interface SessionData {
 
 class SessionCache {
   private cache = new Map<string, SessionData>();
-  private readonly TTL_MS = 4 * 60 * 60 * 1000; // 4 hours
+  private readonly TTL_MS = 10 * 60 * 1000; // 10 minutes
   private cleanupIntervalId?: NodeJS.Timeout;
 
   constructor() {
@@ -72,21 +71,6 @@ class SessionCache {
   }
 
   /**
-   * Update the timestamp of a session without changing its data
-   * This is useful for keeping sessions alive during SSE heartbeats
-   */
-  touch(sessionId: string): boolean {
-    const data = this.cache.get(sessionId);
-
-    if (!data) {
-      return false;
-    }
-
-    data.timestamp = Date.now();
-    return true;
-  }
-
-  /**
    * Check if session exists and is valid
    */
   has(sessionId: string): boolean {
@@ -120,14 +104,14 @@ class SessionCache {
       return;
     }
 
-    const CLEANUP_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
+    const CLEANUP_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 
     this.cleanupIntervalId = setInterval(() => {
       this.cleanupExpired();
     }, CLEANUP_INTERVAL_MS);
 
     console.log(
-      `[SessionCache] Cleanup started (interval: ${CLEANUP_INTERVAL_MS / 1000 / 60}min, TTL: ${this.TTL_MS / 1000 / 60 / 60}h)`
+      `[SessionCache] Cleanup started (interval: ${CLEANUP_INTERVAL_MS / 1000 / 60}min, TTL: ${this.TTL_MS / 1000 / 60}min)`
     );
   }
 
