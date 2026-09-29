@@ -18,9 +18,10 @@ import time
 from datetime import timedelta
 
 import requests
-from psycopg2 import IntegrityError, OperationalError
+from psycopg2 import IntegrityError, OperationalError, errorcodes
 
 from odoo import _, api, fields, models
+from odoo.exceptions import ValidationError
 
 from odoo.addons.queue_job.exception import RetryableJobError
 
@@ -32,6 +33,9 @@ JOB_CHANNEL = "root.whatsapp"
 STATUS_RETRY_SECONDS = 30
 STATUS_MAX_RETRIES = 6
 STATUS_RETRY_WINDOW_SECONDS = 120
+# Two first messages of one contact can run in parallel and race to create the
+# thread; the loser only sees the winner's thread after a new transaction.
+THREAD_RETRY_SECONDS = 5
 MEDIA_TIMEOUT_SECONDS = 20
 
 
@@ -323,12 +327,25 @@ class WhatsAppWebhook(models.AbstractModel):
         )
         if not partner:
             name = (contact or {}).get("profile", {}).get("name") or phone_number
-            partner = partner_env.create(
-                {
-                    "name": name,
-                    "mobile": phone_number,
-                }
-            )
+            try:
+                with self.env.cr.savepoint():
+                    # WhatsApp sends E.164 without "+": parsed as a national
+                    # number, every foreign number would be rejected.
+                    partner = partner_env.create(
+                        {
+                            "name": name,
+                            "mobile": f"+{phone_number}",
+                        }
+                    )
+            except ValidationError as error:
+                # The thread keeps the number: an unparsable one must not
+                # cost the customer's message.
+                _logger.warning(
+                    "No partner created for WhatsApp number %s: %s",
+                    phone_number,
+                    error,
+                )
+                return False
         return partner
 
     def _build_media_url(self, media_id):
@@ -428,7 +445,9 @@ class WhatsAppWebhook(models.AbstractModel):
             try:
                 with self.env.cr.savepoint():
                     thread = thread_model.create(vals)
-            except IntegrityError:
+            except IntegrityError as error:
+                if error.pgcode != errorcodes.UNIQUE_VIOLATION:
+                    raise
                 # Another job created it first (unique backend + phone)
                 thread = thread_model.search(
                     [
@@ -437,6 +456,12 @@ class WhatsAppWebhook(models.AbstractModel):
                     ],
                     limit=1,
                 )
+                if not thread:
+                    # Committed after this transaction's snapshot: not visible
+                    raise RetryableJobError(
+                        "WhatsApp thread of a concurrent job is not visible yet",
+                        seconds=THREAD_RETRY_SECONDS,
+                    ) from error
         else:
             update_vals = {}
             if partner and not thread.partner_id:

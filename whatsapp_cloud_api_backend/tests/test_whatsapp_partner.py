@@ -1,3 +1,6 @@
+from unittest.mock import patch
+
+from odoo.exceptions import ValidationError
 from odoo.tests.common import TransactionCase
 
 from odoo.addons.queue_job.tests.common import trap_jobs
@@ -23,6 +26,17 @@ class TestWhatsAppPartner(TransactionCase):
     def test_creates_unknown_senders(self):
         partner = self._find_or_create("905550000005")
         self.assertEqual(partner.name, "WhatsApp sender")
+
+    def test_creates_partner_of_a_foreign_number(self):
+        # WhatsApp sends numbers without "+": the company country must not
+        # be applied to a Nigerian number
+        partner = self._find_or_create("2348109643180")
+        self.assertEqual(partner.phone_sanitized, "+2348109643180")
+
+    def test_unparsable_number_still_lets_the_message_in(self):
+        Partner = type(self.env["res.partner"])
+        with patch.object(Partner, "create", side_effect=ValidationError("bad")):
+            self.assertFalse(self._find_or_create("2348109643181"))
 
     def test_deleting_a_partner_keeps_the_conversation(self):
         partner = self.env["res.partner"].create({"name": "Duplicate"})
