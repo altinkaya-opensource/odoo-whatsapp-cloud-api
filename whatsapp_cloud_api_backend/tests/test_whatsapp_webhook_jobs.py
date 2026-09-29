@@ -1,6 +1,8 @@
 import time
 from unittest.mock import patch
 
+from psycopg2 import IntegrityError
+
 from odoo.tests.common import TransactionCase
 
 from odoo.addons.queue_job.exception import RetryableJobError
@@ -115,3 +117,29 @@ class TestWhatsAppWebhookJobs(TransactionCase):
                 self.backend, "905550000012", False, {}
             )
         self.assertEqual(found, thread)
+
+    def test_thread_of_a_concurrent_job_out_of_snapshot_is_retried(self):
+        # REPEATABLE READ: the winner's commit stays invisible to the search
+        # that follows the unique violation, so only a new transaction sees it
+        with trap_jobs():
+            self.env["whatsapp.thread"].create(
+                {"backend_id": self.backend.id, "phone_number": "905550000013"}
+            )
+        Thread = type(self.env["whatsapp.thread"])
+        with (
+            trap_jobs(),
+            patch.object(Thread, "search", lambda records, *a, **kw: records.browse()),
+            self.assertLogs("odoo.sql_db", "ERROR"),
+            self.assertRaises(RetryableJobError),
+        ):
+            self.processor._find_or_create_thread(
+                self.backend, "905550000013", False, {}
+            )
+
+    def test_other_integrity_errors_are_not_swallowed(self):
+        with (
+            trap_jobs(),
+            self.assertLogs("odoo.sql_db", "ERROR"),
+            self.assertRaises(IntegrityError),
+        ):
+            self.processor._find_or_create_thread(self.backend, False, False, {})
