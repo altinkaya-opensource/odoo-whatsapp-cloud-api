@@ -28,6 +28,9 @@ from odoo.addons.queue_job.exception import RetryableJobError
 _logger = logging.getLogger(__name__)
 
 JOB_CHANNEL = "root.whatsapp"
+# The channel shares root's capacity with every other job. A customer message
+# runs before older jobs of the default priority (10), statuses do not.
+INCOMING_MESSAGE_PRIORITY = 1
 # A status can arrive before the send that created its message commits.
 # Retry it for a while, then drop statuses of messages Odoo never sent.
 STATUS_RETRY_SECONDS = 30
@@ -79,6 +82,7 @@ class WhatsAppWebhook(models.AbstractModel):
                 for message in value.get("messages", []):
                     self.with_delay(
                         channel=JOB_CHANNEL,
+                        priority=INCOMING_MESSAGE_PRIORITY,
                         identity_key=f"whatsapp-message-{backend.id}-{message.get('id')}",
                         description=f"WhatsApp: incoming message {message.get('id')}",
                     )._process_incoming_message(backend, value, message, payload)

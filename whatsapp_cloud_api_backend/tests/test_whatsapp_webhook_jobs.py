@@ -60,6 +60,10 @@ class TestWhatsAppWebhookJobs(TransactionCase):
             )
             keys = {job.identity_key for job in trap.enqueued_jobs}
             self.assertIn(f"whatsapp-message-{self.backend.id}-wamid.jobs-in", keys)
+            # Customer messages go ahead of the queue, statuses keep the default
+            priorities = {job.method_name: job.priority for job in trap.enqueued_jobs}
+            self.assertEqual(priorities["_process_incoming_message"], 1)
+            self.assertEqual(priorities["_process_message_status"], 10)
 
     def test_redelivery_is_processed_once(self):
         Processor = type(self.processor)
