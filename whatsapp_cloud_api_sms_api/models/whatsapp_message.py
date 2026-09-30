@@ -27,6 +27,8 @@ class WhatsAppMessage(models.Model):
     sms_fallback_mail_message_id = fields.Many2one(
         comodel_name="mail.message",
         ondelete="set null",
+        # Deleting a mail.message looks up this column to clear it.
+        index="btree_not_null",
         help="Chatter message of the notification, updated if it goes by SMS.",
     )
 
