@@ -160,7 +160,7 @@ const toSearchResult = (
 ): MessageSearchResult => ({
   threadId: record.thread_id as number,
   threadName: record.thread_name as string,
-  phoneNumber: (record.phone_number as string) ?? null,
+  phoneNumber: (record.phone_number as string) || null,
   backendId: (record.backend_id as number) ?? null,
   partnerId: (record.partner_id as number) ?? null,
   partnerName: (record.partner_name as string) ?? null,
