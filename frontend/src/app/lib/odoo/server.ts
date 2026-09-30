@@ -205,16 +205,20 @@ export const getThreadRecipient = async (
   const [thread] = await session.searchRead<
     {
       phone_number: string | false;
+      bsuid: string | false;
       backend_id: [number, string] | false;
     }[]
   >("whatsapp.thread", [["id", "=", threadId]], {
     limit: 1,
-    select: ["phone_number", "backend_id"],
+    select: ["phone_number", "bsuid", "backend_id"],
   });
-  if (!thread?.phone_number || !thread.backend_id) {
+  // A customer who hides their number behind a username has only a BSUID,
+  // which Odoo accepts in place of the phone number
+  const phoneNumber = thread?.phone_number || thread?.bsuid;
+  if (!phoneNumber || !thread?.backend_id) {
     return null;
   }
-  return { phoneNumber: thread.phone_number, backendId: thread.backend_id[0] };
+  return { phoneNumber, backendId: thread.backend_id[0] };
 };
 
 export const threadNotFound = () =>

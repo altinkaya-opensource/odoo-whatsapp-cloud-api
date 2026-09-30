@@ -56,7 +56,8 @@ export const toChat = (
   return {
     id,
     threadName: record.name || undefined,
-    phoneNumber: record.phone_number ?? null,
+    // Odoo sends false for a thread without a number (BSUID only)
+    phoneNumber: record.phone_number || null,
     backendId: many2oneId(record.backend_id),
     partnerId,
     partnerName: many2oneName(record.partner_id),

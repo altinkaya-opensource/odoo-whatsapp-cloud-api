@@ -151,8 +151,12 @@ class WhatsAppWebhook(models.AbstractModel):
         msg_type = self._map_message_type(msg_type_raw)
         phone_number = message.get("from")
         contact = (value.get("contacts") or [{}])[0]
+        # A sender with a username may hide their number: only the BSUID comes
+        bsuid = message.get("from_user_id") or contact.get("user_id")
         partner = self._find_or_create_partner(phone_number, contact)
-        thread = self._find_or_create_thread(backend, phone_number, partner, contact)
+        thread = self._find_or_create_thread(
+            backend, phone_number, partner, contact, bsuid=bsuid
+        )
         reply_message = self._find_reply_message(backend, message)
 
         msg_vals = {
@@ -424,24 +428,41 @@ class WhatsAppWebhook(models.AbstractModel):
             _logger.exception("Unexpected error downloading media %s: %s", media_id, e)
             return False
 
-    def _find_or_create_thread(self, backend, phone_number, partner, contact):
+    def _search_thread(self, backend, phone_number, bsuid):
+        """Return the backend's thread of this phone number, else of this BSUID."""
+        thread_model = self.env["whatsapp.thread"].sudo()
+        for field_name, value in (("phone_number", phone_number), ("bsuid", bsuid)):
+            if not value:
+                continue
+            thread = thread_model.search(
+                [("backend_id", "=", backend.id), (field_name, "=", value)], limit=1
+            )
+            if thread:
+                return thread
+        return thread_model
+
+    def _find_or_create_thread(
+        self, backend, phone_number, partner, contact, bsuid=None
+    ):
+        """Find the sender's thread by phone number, else by BSUID, or create it.
+
+        Every message stores its BSUID on the thread, so a customer who later
+        hides their number behind a username stays in the same thread.
+        """
         # Normalize phone number for consistent matching
         normalized_phone = backend._normalize_phone_number(phone_number)
 
         thread_model = self.env["whatsapp.thread"].sudo()
-        thread = thread_model.search(
-            [
-                ("backend_id", "=", backend.id),
-                ("phone_number", "=", normalized_phone),
-            ],
-            limit=1,
-        )
-        display_name = (contact or {}).get("profile", {}).get("name")
+        thread = self._search_thread(backend, normalized_phone, bsuid)
+        profile = (contact or {}).get("profile") or {}
+        username = profile.get("username")
+        display_name = profile.get("name") or (username and f"@{username}")
 
         if not thread:
             vals = {
                 "backend_id": backend.id,
-                "phone_number": normalized_phone,
+                "phone_number": normalized_phone or False,
+                "bsuid": bsuid or False,
                 "partner_id": partner.id if partner else False,
             }
             if display_name:
@@ -452,14 +473,8 @@ class WhatsAppWebhook(models.AbstractModel):
             except IntegrityError as error:
                 if error.pgcode != errorcodes.UNIQUE_VIOLATION:
                     raise
-                # Another job created it first (unique backend + phone)
-                thread = thread_model.search(
-                    [
-                        ("backend_id", "=", backend.id),
-                        ("phone_number", "=", normalized_phone),
-                    ],
-                    limit=1,
-                )
+                # Another job created it first (unique backend + phone or BSUID)
+                thread = self._search_thread(backend, normalized_phone, bsuid)
                 if not thread:
                     # Committed after this transaction's snapshot: not visible
                     raise RetryableJobError(
@@ -470,6 +485,18 @@ class WhatsAppWebhook(models.AbstractModel):
             update_vals = {}
             if partner and not thread.partner_id:
                 update_vals["partner_id"] = partner.id
+            # Found by BSUID: no other thread has the number that came now
+            if normalized_phone and not thread.phone_number:
+                update_vals["phone_number"] = normalized_phone
+            # A new number gives a new BSUID; another thread may already hold it
+            if (
+                bsuid
+                and thread.bsuid != bsuid
+                and not thread_model.search_count(
+                    [("backend_id", "=", backend.id), ("bsuid", "=", bsuid)]
+                )
+            ):
+                update_vals["bsuid"] = bsuid
             if display_name and thread.name in {
                 thread.phone_number,
                 "WhatsApp Thread",

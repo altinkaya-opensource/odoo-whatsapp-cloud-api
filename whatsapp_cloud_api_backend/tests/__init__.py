@@ -1,4 +1,5 @@
 from . import test_whatsapp_backend
+from . import test_whatsapp_bsuid
 from . import test_whatsapp_bus
 from . import test_whatsapp_chatbot
 from . import test_whatsapp_frontend_sso

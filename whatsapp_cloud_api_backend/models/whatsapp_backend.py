@@ -28,6 +28,9 @@ _logger = logging.getLogger(__name__)
 # Credentials stay with the people who configure backends: agents only need
 # to send, and the code that talks to Meta reads them with sudo.
 SECRET_GROUPS = "whatsapp_cloud_api_backend.group_whatsapp_backend_manager"
+# Meta's business-scoped user ID: country code, optional "ENT." for a parent
+# ID, then up to 128 alphanumerics (e.g. TR.1809375520086763)
+BSUID_PATTERN = re.compile(r"^[A-Z]{2}\.(ENT\.)?[A-Za-z0-9]{1,128}$")
 
 
 class WhatsAppBackend(models.Model):
@@ -462,6 +465,22 @@ class WhatsAppBackend(models.Model):
             raise UserError(
                 _("A phone number is required to identify the WhatsApp thread.")
             )
+        if BSUID_PATTERN.match(phone_number):
+            # A sender who hides their number: reply in their thread, never
+            # read the ID as a phone number
+            thread = (
+                self.env["whatsapp.thread"]
+                .sudo()
+                .search(
+                    [("backend_id", "=", self.id), ("bsuid", "=", phone_number)],
+                    limit=1,
+                )
+            )
+            if not thread:
+                raise UserError(
+                    _("No WhatsApp thread was found for this WhatsApp user ID.")
+                )
+            return thread
         # Normalize phone number for consistent matching
         normalized_phone = self._normalize_phone_number(phone_number)
 

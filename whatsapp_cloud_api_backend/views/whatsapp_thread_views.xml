@@ -30,6 +30,7 @@
                         <group>
                             <field name="partner_id" />
                             <field name="phone_number" />
+                            <field name="bsuid" />
                             <field name="last_message_date" readonly="1" />
                         </group>
                     </group>
@@ -62,6 +63,7 @@
             <search string="WhatsApp Threads">
                 <field name="name" />
                 <field name="phone_number" />
+                <field name="bsuid" />
                 <field name="partner_id" />
             </search>
         </field>

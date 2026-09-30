@@ -48,7 +48,15 @@ class WhatsAppThread(models.Model):
         ondelete="set null",
         index=True,
     )
-    phone_number = fields.Char(required=True, index=True)
+    phone_number = fields.Char(index=True)
+    bsuid = fields.Char(
+        string="WhatsApp User ID",
+        index=True,
+        readonly=True,
+        help="Business-scoped user ID given by Meta. A sender with a WhatsApp "
+        "username may hide their phone number: their messages carry only "
+        "this ID, and replies go to it.",
+    )
     whatsapp_message_ids = fields.One2many(
         comodel_name="whatsapp.message",
         inverse_name="thread_id",
@@ -106,7 +114,17 @@ class WhatsAppThread(models.Model):
             "whatsapp_thread_unique",
             "unique(backend_id, phone_number)",
             "A thread already exists for this backend and phone number.",
-        )
+        ),
+        (
+            "whatsapp_thread_bsuid_unique",
+            "unique(backend_id, bsuid)",
+            "A thread already exists for this backend and WhatsApp user ID.",
+        ),
+        (
+            "whatsapp_thread_has_recipient",
+            "CHECK(phone_number IS NOT NULL OR bsuid IS NOT NULL)",
+            "A WhatsApp thread needs a phone number or a WhatsApp user ID.",
+        ),
     ]
 
     @api.depends("partner_id", "partner_id.avatar_256")
@@ -393,8 +411,12 @@ class WhatsAppThread(models.Model):
         base_payload = {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
-            "to": self.phone_number,
         }
+        # A sender who hides their number is reached through their BSUID
+        if self.phone_number:
+            base_payload["to"] = self.phone_number
+        else:
+            base_payload["recipient"] = self.bsuid
         base_payload.update(payload)
         # Deep copy for storage purposes to avoid later mutation
         stored_request = json.loads(json.dumps(base_payload))
