@@ -89,6 +89,8 @@
     "sending": "Sending...",
     "sendError": "Failed to send the message",
     "replyingTo": "Replying to {{name}}",
+    "typing": "{{names}} is typing...",
+    "typingMany": "{{names}} are typing...",
     "aiImprove": "Improve with AI",
     "aiImproving": "Improving...",
     "aiImproveError": "Failed to improve text with AI",

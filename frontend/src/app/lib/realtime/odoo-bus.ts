@@ -10,7 +10,9 @@ import { getOdooBaseUrl } from "../odoo/server";
 import { sessionCache } from "../session-cache";
 
 export type BusEvent = { id: number; type: string; payload: unknown };
-export type BusSignal = BusEvent | { type: "session-expired" };
+/** A momentary event: not replayed, and without an id to resume from. */
+export type BusNotice = { type: string; payload: unknown };
+export type BusSignal = BusEvent | BusNotice | { type: "session-expired" };
 type Listener = (signal: BusSignal) => void;
 
 type BusNotification = {
@@ -24,6 +26,8 @@ const RELEASE_DELAY_MS = 30_000;
 const MAX_RETRY_DELAY_MS = 30_000;
 // Odoo closes the socket with this code when the session is gone
 const SESSION_EXPIRED_CODE = 4001;
+// "X is typing" is stale by the time a tab reconnects
+const NOTICE_TYPES = new Set(["whatsapp/typing"]);
 
 /** Odoo's websocket: ODOO_WEBSOCKET_URL, or /websocket next to JSON-RPC. */
 const busUrl = () =>
@@ -106,11 +110,12 @@ class OdooBusConnection {
           continue;
         }
         this.lastId = notification.id;
-        const event = {
-          id: notification.id,
-          type: notification.message.type,
-          payload: notification.message.payload,
-        };
+        const { type, payload } = notification.message;
+        if (NOTICE_TYPES.has(type)) {
+          this.emit({ type, payload });
+          continue;
+        }
+        const event = { id: notification.id, type, payload };
         this.buffer.push(event);
         if (this.buffer.length > BUFFER_SIZE) {
           this.buffer.shift();

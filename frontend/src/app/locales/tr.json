@@ -89,6 +89,8 @@
     "sending": "Gönderiliyor...",
     "sendError": "Mesaj gönderilemedi",
     "replyingTo": "{{name}} kişisine yanıt veriliyor",
+    "typing": "{{names}} yazıyor...",
+    "typingMany": "{{names}} yazıyor...",
     "aiImprove": "Yapay zeka ile iyileştir",
     "aiImproving": "İyileştiriliyor...",
     "aiImproveError": "Metin yapay zeka ile iyileştirilemedi",

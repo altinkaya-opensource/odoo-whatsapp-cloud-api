@@ -149,11 +149,17 @@ carries the bus notification id; a tab that reconnects sends the last id it
 saw and gets the events it missed from a 500-event buffer, or a `resync`
 event, which reloads the cached threads, messages and unread count.
 
-Two event types: `whatsapp/thread` (chat list fields) and `whatsapp/message`
-(`created`, or `updated` for status, reaction, body or attachment changes).
-Neither carries an unread count, because one event reaches every user of the
-backend and unread is per user; each client counts its own and re-syncs the
-total from `/api/threads/unread-count`.
+Two record event types: `whatsapp/thread` (chat list fields) and
+`whatsapp/message` (`created`, or `updated` for status, reaction, body or
+attachment changes). Neither carries an unread count, because one event
+reaches every user of the backend and unread is per user; each client counts
+its own and re-syncs the total from `/api/threads/unread-count`.
+
+`whatsapp/typing` says who started or stopped typing in a thread. It is
+momentary: it carries no event id and is not kept for replay. The composer
+posts it through `/api/threads/typing` (`useTyping`), and a notice that is not
+refreshed within a few seconds expires, because a closed tab never says it
+stopped.
 
 `RealtimeProvider` owns the tab's stream (none for a tab blocked by the
 single-tab rule). Subscribe with `useRealtime`:
@@ -162,6 +168,7 @@ single-tab rule). Subscribe with `useRealtime`:
 useRealtime({
   onThread: (record) => {},
   onMessage: (event, threadId, record) => {},
+  onTyping: (notice) => {},
 });
 ```
 
@@ -253,3 +260,13 @@ directly.
 - Layout checked below and above 768px
 - `bun run type-check`, `bun run lint` and `bun run prettier` pass
 - Anything touching Odoo models confirmed with the backend developer
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->
