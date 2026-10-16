@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
       const send = (signal: BusSignal) => {
         const id = "id" in signal ? `id: ${signal.id}\n` : "";
         const data =
-          "id" in signal
+          "payload" in signal
             ? { type: signal.type, payload: signal.payload }
             : { type: signal.type };
         write(`${id}data: ${JSON.stringify(data)}\n\n`);

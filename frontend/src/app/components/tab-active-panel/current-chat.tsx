@@ -19,6 +19,7 @@ import DragDropZone from "../message/drag-drop-zone";
 import SuggestionChips from "../message/suggestion-chips";
 import { useTranslations } from "@/app/context/translation-provider";
 import { useAppConfig } from "@/app/hooks/use-app-config";
+import { useTyping } from "@/app/hooks/use-typing";
 import { userErrorMessage } from "@/app/lib/api-client";
 import { readAiStream } from "@/app/lib/ai/read-stream";
 import {
@@ -96,6 +97,7 @@ export default function CurrentChat() {
   >(null);
   const { t, locale } = useTranslations();
   const { suggestionsEnabled } = useAppConfig();
+  const { typistNames, notifyTyping, stopTyping } = useTyping(chatId);
 
   useEffect(() => {
     // Abort any ongoing suggestion requests when switching threads
@@ -218,6 +220,7 @@ export default function CurrentChat() {
     if (trimmed.length === 0) {
       return;
     }
+    stopTyping();
 
     try {
       const sending = sendMessage(trimmed);
@@ -646,6 +649,22 @@ export default function CurrentChat() {
                 </button>
               </div>
             )}
+            <div role="status">
+              {typistNames.length > 0 && (
+                <p className="mb-2 px-1 text-xs font-semibold text-[rgb(var(--text-secondary))]">
+                  {t(
+                    typistNames.length === 1
+                      ? "chatInput.typing"
+                      : "chatInput.typingMany",
+                    {
+                      names: new Intl.ListFormat(locale, {
+                        type: "conjunction",
+                      }).format(typistNames),
+                    }
+                  )}
+                </p>
+              )}
+            </div>
             <form onSubmit={handleSubmit}>
               <div className="control-field flex items-end gap-1.5 px-1.5 py-1.5 shadow-sm">
                 <AttachmentPicker
@@ -726,6 +745,7 @@ export default function CurrentChat() {
                       setSendError(null);
                     }
                     setMessageText(event.target.value);
+                    notifyTyping(event.target.value);
                   }}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" && !event.shiftKey) {

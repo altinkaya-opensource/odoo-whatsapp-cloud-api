@@ -16,6 +16,14 @@ import type {
   OdooThreadRecord,
 } from "../lib/whatsapp/records";
 
+/** A user of the backend started or stopped typing in a thread. */
+export type TypingNotice = {
+  thread_id: number;
+  user_id: number;
+  user_name: string;
+  is_typing: boolean;
+};
+
 export type RealtimeHandlers = {
   onThread?: (record: OdooThreadRecord) => void;
   onMessage?: (
@@ -23,6 +31,7 @@ export type RealtimeHandlers = {
     threadId: string,
     record: OdooMessageRecord
   ) => void;
+  onTyping?: (notice: TypingNotice) => void;
 };
 
 type RealtimeContextValue = {
@@ -40,6 +49,7 @@ type StreamEvent =
         message: OdooMessageRecord;
       };
     }
+  | { type: "whatsapp/typing"; payload: TypingNotice }
   | { type: "resync" }
   | { type: "session-expired" };
 
@@ -97,6 +107,9 @@ export default function RealtimeProvider({ children }: PropsWithChildren) {
           );
           break;
         }
+        case "whatsapp/typing":
+          subscribers.forEach((s) => s.current.onTyping?.(event.payload));
+          break;
         case "resync":
           void queryClient.invalidateQueries({ queryKey: ["threads"] });
           void queryClient.invalidateQueries({ queryKey: ["messages"] });

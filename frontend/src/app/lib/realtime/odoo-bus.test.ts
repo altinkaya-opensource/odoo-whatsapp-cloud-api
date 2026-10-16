@@ -26,10 +26,10 @@ class FakeSocket {
     this.handlers.get("open")?.({});
   }
 
-  receive(ids: number[]) {
+  receive(ids: number[], type = "whatsapp/message") {
     const notifications = ids.map((id) => ({
       id,
-      message: { type: "whatsapp/message", payload: { id } },
+      message: { type, payload: { id } },
     }));
     this.handlers.get("message")?.({ data: JSON.stringify(notifications) });
   }
@@ -92,6 +92,22 @@ describe("Odoo bus connection", () => {
     expect(ids(connection.subscribe(vi.fn(), 5).replay)).toEqual([6, 7]);
     // An event this connection never saw: the tab reloads its data
     expect(connection.subscribe(vi.fn(), 3).replay).toBeNull();
+  });
+
+  it("passes typing on without keeping it for replay", () => {
+    const connection = getBusConnection(SESSION);
+    const [socket] = FakeSocket.instances;
+    const listener = vi.fn();
+    connection.subscribe(listener, null);
+    socket.open();
+    socket.receive([5]);
+    socket.receive([6], "whatsapp/typing");
+    expect(listener).toHaveBeenLastCalledWith({
+      type: "whatsapp/typing",
+      payload: { id: 6 },
+    });
+    // A tab that saw event 5 missed nothing worth replaying
+    expect(connection.subscribe(vi.fn(), 5).replay).toEqual([]);
   });
 
   it("resumes from the last event after a drop", () => {
