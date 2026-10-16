@@ -1,5 +1,6 @@
 import json
 
+from odoo.exceptions import AccessError
 from odoo.tests.common import TransactionCase, new_test_user
 
 from odoo.addons.bus.models.bus import channel_with_db, json_dump
@@ -87,6 +88,40 @@ class TestWhatsAppBus(TransactionCase):
             self.thread.write({"last_message_preview": "Merhaba"})
         (notification,) = self._commit_notifications()
         self.assertEqual(notification["type"], "whatsapp/thread")
+
+    def test_typing_reaches_the_backend_channel(self):
+        channel = json_dump(channel_with_db(self.env.cr.dbname, self.backend))
+        before = self.env["bus.bus"].search([], order="id desc", limit=1).id
+        self.thread.with_user(self.agent).notify_typing(True)
+        (notification,) = self.env["bus.bus"].search(
+            [("id", ">", before), ("channel", "=", channel)]
+        )
+        message = json.loads(notification.message)
+        self.assertEqual(message["type"], "whatsapp/typing")
+        self.assertEqual(
+            message["payload"],
+            {
+                "thread_id": self.thread.id,
+                "user_id": self.agent.id,
+                "user_name": self.agent.name,
+                "is_typing": True,
+            },
+        )
+
+    def test_typing_needs_access_to_the_thread(self):
+        # A WhatsApp user of another backend, and an Odoo user without WhatsApp
+        for login, groups in (
+            (
+                "whatsapp_bus_outsider",
+                "base.group_user,whatsapp_cloud_api_backend.group_whatsapp_backend_user",
+            ),
+            ("whatsapp_bus_employee", "base.group_user"),
+        ):
+            user = new_test_user(
+                self.env, login=login, password="Bus-Test-1234", groups=groups
+            )
+            with self.subTest(login=login), self.assertRaises(AccessError):
+                self.thread.with_user(user).notify_typing(True)
 
     def test_frontend_subscribes_to_member_backends_only(self):
         websocket = self.env["ir.websocket"].with_user(self.agent)

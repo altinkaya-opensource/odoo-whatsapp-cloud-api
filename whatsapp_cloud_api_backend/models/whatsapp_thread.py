@@ -478,6 +478,27 @@ class WhatsAppThread(models.Model):
         self.env["whatsapp.thread.member"].sudo()._mark_seen(self, self.env.user)
         return True
 
+    def notify_typing(self, is_typing):
+        """Tell the backend's other users that the current user is typing here.
+
+        Only the bus notification is stored. The frontend forgets a notice
+        that is not refreshed, so a closed tab does not stay typing.
+        """
+        self.ensure_one()
+        self.check_access_rights("read")
+        self.check_access_rule("read")
+        self.env["bus.bus"]._sendone(
+            self.backend_id,
+            "whatsapp/typing",
+            {
+                "thread_id": self.id,
+                "user_id": self.env.uid,
+                "user_name": self.env.user.name,
+                "is_typing": bool(is_typing),
+            },
+        )
+        return True
+
     @api.model
     def mark_all_as_read(self, backend_ids):
         """Mark every thread of these backends read for the current user."""
