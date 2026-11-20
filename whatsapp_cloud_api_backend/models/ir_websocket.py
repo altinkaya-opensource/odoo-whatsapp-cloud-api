@@ -20,6 +20,11 @@ class IrWebsocket(models.AbstractModel):
         Odoo re-checks the session on every websocket message, and only
         backends the user is a member of are returned.
         """
-        if FRONTEND_CHANNEL not in channels or self.env.user._is_public():
+        if (
+            FRONTEND_CHANNEL not in channels
+            # A websocket whose session ended has no user at all
+            or not self.env.user
+            or self.env.user._is_public()
+        ):
             return self.env["whatsapp.backend"]
         return self.env["whatsapp.backend"].search([("user_ids", "in", self.env.uid)])
